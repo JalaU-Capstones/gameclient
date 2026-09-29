@@ -1,0 +1,26 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gameclient
+    restart: unless-stopped
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8080}
+      ORIGIN: ${ORIGIN:-http://localhost:3000}
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://localhost:3000/
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
