@@ -1,9 +1,21 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import '../app.css';
+  import { sounds } from '$lib/audio/sounds';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
   let { children } = $props();
+
+  onMount(() => {
+    const unlock = () => void sounds.unlock();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  });
 </script>
 
 <svelte:head>
