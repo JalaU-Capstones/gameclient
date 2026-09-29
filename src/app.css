@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #050505;
+  --cell: #1a1330;
+  --neon-magenta: #ff2bd6;
+  --neon-cyan: #00f0ff;
+  --neon-yellow: #ffe600;
+  --text-muted: #8a8a99;
+  --text-primary: #f2f2f2;
+  --glow-magenta: 0 0 12px var(--neon-magenta);
+  --glow-cyan: 0 0 10px var(--neon-cyan);
+  --glow-yellow: 0 0 6px var(--neon-yellow);
+  --radius-cell: 28px;
+  --font-title: 'Press Start 2P', monospace;
+  --font-ui: 'Fredoka', system-ui, sans-serif;
+}
+
+html.dark {
+  --bg: #050505;
+  --cell: #1a1330;
+  --neon-magenta: #ff2bd6;
+  --neon-cyan: #00f0ff;
+  --neon-yellow: #ffe600;
+  --text-muted: #8a8a99;
+  --text-primary: #f2f2f2;
+  --glow-magenta: 0 0 12px var(--neon-magenta);
+  --glow-cyan: 0 0 10px var(--neon-cyan);
+  --glow-yellow: 0 0 6px var(--neon-yellow);
+}
+
+html.light {
+  --bg: #f7f7fa;
+  --cell: #ffffff;
+  --neon-magenta: #c400a3;
+  --neon-cyan: #0088a3;
+  --neon-yellow: #a68a00;
+  --text-primary: #1a1a1a;
+  --text-muted: #6a6a75;
+  --glow-magenta: 0 0 4px var(--neon-magenta);
+  --glow-cyan: 0 0 4px var(--neon-cyan);
+  --glow-yellow: 0 0 4px var(--neon-yellow);
+}
+
+html {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-title);
+  color: var(--neon-magenta);
+  text-shadow: var(--glow-magenta);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

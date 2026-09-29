@@ -1,0 +1,10 @@
+export default {
+  plugins: ['prettier-plugin-svelte'],
+  singleQuote: true,
+  trailingComma: 'none',
+  printWidth: 100,
+  svelteSortOrder: 'options-scripts-markup-styles',
+  svelteAllowShorthand: true,
+  tabWidth: 2,
+  useTabs: false
+};
