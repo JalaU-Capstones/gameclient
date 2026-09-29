@@ -179,6 +179,12 @@ pnpm format
 
 La interfaz usa una estética retro tipo arcade con fondo oscuro y colores neon. Los componentes visuales se mantienen mínimos en D2 para dejar la capa de negocio y la validación del backend bien estabilizada.
 
+### Recursos y créditos
+
+Los sonidos arcade, la tipografía y el favicon están documentados en
+[`CREDITS.md`](./CREDITS.md), con sus respectivas licencias (CC0, SIL OFL,
+MIT).
+
 ## Integración continua
 
 El proyecto usa Vitest y SvelteKit para validar calidad en cada cambio. La cobertura mínima se deja en 70% para evitar regresiones en la capa de cliente.
