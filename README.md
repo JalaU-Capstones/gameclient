@@ -1,8 +1,6 @@
 # GameClient
 
-Frontend de SvelteKit para un juego de Tic-Tac-Toe que se integra con el backend FastAPI existente. Este cliente está pensado para trabajar con la API versionada del backend: `/api/v1` para REST heredados y `/api/v2` para REST y WebSocket.
-
-[![CI](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml/badge.svg)](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml)
+Frontend de SvelteKit para el juego. Este cliente encapsula el acceso HTTP y WebSocket hacia el backend FastAPI para que las pantallas de UI solo consuman módulos de API y stores, sin tener que manejar fetch ni sockets directamente.
 
 ## Stack
 
@@ -28,25 +26,23 @@ cp .env.example .env
 
 ## Comandos con Makefile
 
-El proyecto incluye un `Makefile` que envuelve los comandos de pnpm para estandarizar el flujo de trabajo. Ejecuta `make help` para ver la lista completa.
-
-| Comando             | Descripción                          |
-| ------------------- | ------------------------------------ |
-| `make install`      | Instala dependencias con pnpm        |
-| `make dev`          | Servidor de desarrollo (Vite)        |
-| `make build`        | Compila para producción              |
-| `make preview`      | Previsualiza el build (Vite preview) |
-| `make start`        | Sirve el build con adapter-node      |
-| `make test`         | Ejecuta los tests                    |
-| `make test-cov`     | Tests con cobertura                  |
-| `make lint`         | Prettier check + ESLint              |
-| `make format`       | Formatea con Prettier                |
-| `make check`        | Typecheck con svelte-check           |
-| `make clean`        | Limpia cachés y artefactos           |
-| `make docker-build` | Construye la imagen Docker           |
-| `make docker-up`    | Levanta el contenedor                |
-| `make docker-down`  | Detiene el contenedor                |
-| `make docker-logs`  | Ver logs del contenedor              |
+| Comando             | Descripción                      |
+| ------------------- | -------------------------------- |
+| `make install`      | Instala dependencias con pnpm    |
+| `make dev`          | Inicia el servidor de desarrollo |
+| `make build`        | Compila en producción            |
+| `make preview`      | Previsualiza el build            |
+| `make start`        | Sirve el build con adapter-node  |
+| `make test`         | Ejecuta los tests                |
+| `make test-cov`     | Ejecuta tests con cobertura      |
+| `make lint`         | Ejecuta Prettier y ESLint        |
+| `make format`       | Formatea el proyecto             |
+| `make check`        | Ejecuta el typecheck de Svelte   |
+| `make clean`        | Elimina cachés y artefactos      |
+| `make docker-build` | Compila la imagen Docker         |
+| `make docker-up`    | Levanta el contenedor            |
+| `make docker-down`  | Detiene el contenedor            |
+| `make docker-logs`  | Muestra logs del contenedor      |
 
 ## Desarrollo
 
@@ -54,7 +50,113 @@ El proyecto incluye un `Makefile` que envuelve los comandos de pnpm para estanda
 pnpm dev
 ```
 
-La aplicación se ejecuta en `http://localhost:5173`.
+La aplicación se ejecuta en `http://localhost:5173` y usa el proxy de Vite para redirigir `/api` y `/health` hacia `http://localhost:8080`.
+
+## Estructura del proyecto
+
+```text
+src/
+├── app.css
+├── app.html
+├── lib/
+│   ├── api/
+│   │   ├── client.ts
+│   │   ├── errors.ts
+│   │   ├── health.ts
+│   │   └── ws.ts
+│   ├── components/
+│   │   └── GameTitle.svelte
+│   ├── config.ts
+│   ├── stores/
+│   │   └── session.ts
+│   ├── types/
+│   │   ├── api.ts
+│   │   └── ws.ts
+│   └── index.ts
+├── routes/
+│   └── +page.svelte
+├── vitest-setup.ts
+└── app.d.ts
+```
+
+## Cliente HTTP y WebSocket
+
+La capa de cliente se compone por capas pequeñas y reutilizables:
+
+- `config`: lee `PUBLIC_*` y construye URLs para HTTP/WS.
+- `api/client`: wrapper HTTP con timeout, parseo de JSON, manejo de `204` y errores tipados.
+- `api/errors`: `ApiError`, `NetworkError` y `TimeoutError`.
+- `api/health`: ejemplo concreto de endpoint de salud.
+- `api/ws`: cliente WebSocket con handshake de autenticación, reconexión y ping/pong.
+- `stores/session`: estado mínimo del usuario autenticado.
+
+### Uso HTTP
+
+```ts
+import type { User } from '$lib/types/api';
+import { httpClient } from '$lib/api/client';
+
+const users = await httpClient.get<User[]>('/api/v1/users');
+```
+
+### Uso de endpoint concreto
+
+```ts
+import { healthApi } from '$lib/api/health';
+
+const status = await healthApi.check();
+```
+
+### Manejo de errores
+
+```ts
+import { ApiError } from '$lib/api/errors';
+
+try {
+  await httpClient.get('/api/v1/profile');
+} catch (err) {
+  if (err instanceof ApiError && err.isUnauthorized) {
+    // redirect o limpieza de sesión
+  }
+}
+```
+
+### Uso WebSocket
+
+```ts
+import { createGameplaysClient } from '$lib/api/ws';
+
+const client = createGameplaysClient();
+client.connect('jwt-token');
+
+client.on('game_message', (payload) => {
+  console.log('message', payload);
+});
+
+// cuando la pantalla termina:
+client.disconnect();
+```
+
+### Variables de entorno
+
+| Variable                    | Descripción                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `PUBLIC_API_BASE`           | Base para llamadas HTTP. En desarrollo se deja vacía para usar el proxy de Vite.                 |
+| `PUBLIC_WS_BASE`            | Base para WebSockets. En desarrollo se puede dejar vacía para derivarse desde `window.location`. |
+| `PUBLIC_REQUEST_TIMEOUT_MS` | Timeout global de cada request HTTP, por defecto `15000`.                                        |
+
+### Pruebas
+
+La capa de networking se valida con:
+
+- `msw` para mocks de HTTP.
+- `vitest-websocket-mock` para pruebas del cliente WebSocket.
+
+### Reglas para los compañeros de UI
+
+- Importa siempre módulos de endpoint (`healthApi`, `usersApi`, ...) en lugar de hacer `fetch` directo.
+- Lee el estado de autenticación desde `$session` y `$isAuthenticated`; no duplicar el estado del usuario en componentes.
+- Instancia clientes WebSocket por pantalla y llama a `disconnect()` en `onDestroy` cuando la vista deje de usarse.
 
 ## Tests
 
@@ -63,7 +165,7 @@ pnpm test
 pnpm test:cov
 ```
 
-La suite tiene 8 tests. La cobertura actual es de 100% en líneas, 100% en funciones, 75% en ramas y 93.93% en sentencias.
+La suite de clientes HTTP/WebSocket usa mocks reales y el umbral de cobertura actual es del 70%.
 
 ## Lint y calidad
 
@@ -73,74 +175,13 @@ pnpm check
 pnpm format
 ```
 
-## Estructura del proyecto
-
-```text
-.github/workflows/ci.yml
-.gitlab-ci.yml
-Makefile
-src/
-├── app.css
-├── app.html
-├── app.d.ts
-├── lib/
-│   ├── api/
-│   │   └── client.ts
-│   ├── components/
-│   │   ├── GameTitle.svelte
-│   │   ├── GameTitle.test.ts
-│   │   ├── ThemeToggle.svelte
-│   │   └── ThemeToggle.test.ts
-│   ├── stores/
-│   │   ├── theme.ts
-│   │   └── theme.test.ts
-│   ├── types/
-│   │   └── api.ts
-│   └── utils/
-│       └── format.ts
-├── routes/
-│   ├── +layout.svelte
-│   ├── +layout.ts
-│   ├── +page.svelte
-│   ├── login/+page.svelte
-│   ├── register/+page.svelte
-│   ├── lobby/+page.svelte
-│   ├── game/[id]/+page.svelte
-│   ├── profile/+page.svelte
-│   ├── history/+page.svelte
-│   └── logs/+page.svelte
-├── vitest-setup.ts
-└── app.css
-```
-
 ## Diseño visual
 
-La interfaz usa una estética retro tipo arcade con fondo oscuro, neon magenta, cyan y amarillo. Las fuentes utilizadas son:
-
-- Press Start 2P para títulos
-- Fredoka para texto general
-
-El tema por defecto es oscuro y se puede alternar con un modo claro. La preferencia se guarda en `localStorage` y se aplica con la clase `dark` en el elemento `html`.
-
-> Las fuentes Press Start 2P y Fredoka se distribuyen bajo la licencia Open Font License (OFL).
+La interfaz usa una estética retro tipo arcade con fondo oscuro y colores neon. Los componentes visuales se mantienen mínimos en D2 para dejar la capa de negocio y la validación del backend bien estabilizada.
 
 ## Integración continua
 
-El proyecto tiene pipelines configurados para GitHub Actions y GitLab CI.
-
-### GitHub Actions (`.github/workflows/ci.yml`)
-
-- `quality`: Prettier, ESLint y svelte-check con Node 22.
-- `test`: matriz Node 22/24, tests con cobertura y compilación.
-- `docker`: construye la imagen y ejecuta un smoke test en pushes a `main` y tags.
-
-### GitLab CI (`.gitlab-ci.yml`)
-
-Incluye jobs paralelos de lint, svelte-check, una matriz de tests con Node 22/24, compilación y construcción Docker en `main` y tags.
-
-### Estrategia de cobertura
-
-El umbral actual es **60%** en D1 (bootstrap). Se elevará a **70%** cuando se implementen las pantallas de autenticación, lobby y tablero (D2+). Los stubs de API y utilidades, las declaraciones de tipos, las rutas placeholder y el archivo barrel se excluyen temporalmente de la métrica.
+El proyecto usa Vitest y SvelteKit para validar calidad en cada cambio. La cobertura mínima se deja en 70% para evitar regresiones en la capa de cliente.
 
 ## Docker
 
@@ -149,29 +190,13 @@ docker build -t gameclient:dev .
 docker compose up
 ```
 
-Variables de entorno relevantes:
+Variables relevantes:
 
-- `PUBLIC_API_BASE`: URL pública de la API del backend.
-- `ORIGIN`: URL pública del frontend, requerida por `adapter-node` para evitar redirecciones incorrectas.
-- `APP_PORT`: puerto expuesto por Docker Compose.
-
-## Integración con el backend
-
-En desarrollo, el cliente usa un proxy de Vite para redirigir `/api` hacia `http://localhost:8080`. En producción se recomienda usar `PUBLIC_API_BASE` con la URL pública del backend para evitar depender del proxy local.
-
-## Roadmap
-
-Pantallas pendientes por implementar:
-
-- Login
-- Registro
-- Lobby
-- Tablero del juego
-- Perfil de usuario
-- Historial de partidas
-- Logs del sistema
-- Autenticación y guardas de rutas
-- Integración WebSocket con el backend
+- `PUBLIC_API_BASE`
+- `PUBLIC_WS_BASE`
+- `PUBLIC_REQUEST_TIMEOUT_MS`
+- `ORIGIN` para `adapter-node`
+- `APP_PORT`
 
 ## Licencia
 
