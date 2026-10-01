@@ -1,14 +1,33 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
+  import { authApi } from '$lib/api/auth';
+  import { session } from '$lib/stores/session';
+  import { goto } from '$app/navigation';
   let visible = $state(false);
   let inputEmail = $state('');
   let inputPassword = $state('');
+  let error = $state('');
+
+  async function iniciarSesion(event: SubmitEvent) {
+    event.preventDefault();
+    error = '';
+
+    try {
+      await authApi.login({ email: inputEmail, password: inputPassword });
+      const user = await authApi.me();
+      session.setUser(user);
+      await goto(resolve('/lobby'));
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Algo salió mal';
+    }
+  }
 </script>
 
 <section
   class="space-y-14 py-8 px-6 text-center mx-auto max-w-lg min-h-[70vh] flex flex-col justify-center"
 >
   <h2 class="text-4xl uppercase tracking-[0.25em] text-[var(--neon-cyan)]">Login</h2>
-  <form class="space-y-10">
+  <form onsubmit={iniciarSesion} class="space-y-10">
     <div class="space-y-4">
       <p class="font-bold text-[var(--text-primary)] text-xl md:text-3xl text-left">
         Insert your email
@@ -43,8 +62,11 @@
         </button>
       </div>
     </div>
+    {#if error}
+      <p class="text-red-500">{error}</p>
+    {/if}
     <button
-      type="button"
+      type="submit"
       class="w-full rounded-full border border-[var(--neon-magenta)] px-4 py-4 md:py-5 uppercase tracking-widest text-[var(--neon-magenta)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95"
     >
       Login
