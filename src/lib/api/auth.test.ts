@@ -19,6 +19,39 @@ afterAll(() => {
 });
 
 describe('authApi', () => {
+  describe('register', () => {
+    it('sends registration details and returns the authenticated user', async () => {
+      const response = {
+        access_token: 'abc',
+        token_type: 'bearer',
+        user: {
+          id: 'u1',
+          name: 'Laura',
+          email: 'laura@test.com',
+          registerDate: '2026-10-01T12:00:00Z'
+        }
+      };
+      server.use(
+        http.post('*/api/v2/auth/register', async ({ request }) => {
+          expect(await request.json()).toEqual({
+            name: 'Laura',
+            email: 'laura@test.com',
+            password: 'clave12345'
+          });
+          return HttpResponse.json(response, { status: 201 });
+        })
+      );
+
+      await expect(
+        authApi.register({
+          name: 'Laura',
+          email: 'laura@test.com',
+          password: 'clave12345'
+        })
+      ).resolves.toEqual(response);
+    });
+  });
+
   describe('login', () => {
     it('sends email and password as JSON with a POST request', async () => {
       server.use(
