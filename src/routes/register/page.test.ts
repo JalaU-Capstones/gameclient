@@ -79,4 +79,35 @@ describe('Register page', () => {
     unsubscribe();
     expect(currentUser).toEqual(userPayload);
   });
+
+  it('plays a click and toggles password visibility', async () => {
+    const user = userEvent.setup();
+    render(RegisterPage);
+
+    const password = screen.getByPlaceholderText('Password');
+    expect(password).toHaveAttribute('type', 'password');
+
+    await user.click(screen.getByRole('button', { name: 'SHOW' }));
+    expect(password).toHaveAttribute('type', 'text');
+    expect(mocks.play).toHaveBeenCalledWith('click');
+
+    mocks.play.mockClear();
+    await user.click(screen.getByRole('button', { name: 'HIDE' }));
+    expect(password).toHaveAttribute('type', 'password');
+    expect(mocks.play).toHaveBeenCalledWith('click');
+  });
+
+  it('plays a click and preserves the redirect in the back-to-login link', async () => {
+    const user = userEvent.setup();
+    mocks.page.url.searchParams = new URLSearchParams('redirect=%2Fhistory');
+    render(RegisterPage);
+
+    const loginLink = screen.getByRole('link', { name: 'Back to login' });
+    expect(loginLink).toHaveAttribute('href', '/login?redirect=%2Fhistory');
+    loginLink.addEventListener('click', (event) => event.preventDefault(), { once: true });
+
+    await user.click(loginLink);
+
+    expect(mocks.play).toHaveBeenCalledWith('click');
+  });
 });
