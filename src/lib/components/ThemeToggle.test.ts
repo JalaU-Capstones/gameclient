@@ -21,7 +21,11 @@ describe('ThemeToggle', () => {
   it('renders a button', () => {
     render(ThemeToggle);
 
-    expect(screen.getByRole('button', { name: 'Switch to light mode' })).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Switch to light mode' });
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveClass(
+      'rounded-full border border-[var(--neon-magenta)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-magenta)] transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 md:text-sm'
+    );
   });
 
   it('toggles the theme when clicked', async () => {
