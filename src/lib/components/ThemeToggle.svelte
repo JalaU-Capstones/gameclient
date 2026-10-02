@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { sounds } from '$lib/audio/sounds';
   import { theme } from '$lib/stores/theme';
 
   $: isDark = $theme === 'dark';
   $: label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
 
   function toggleTheme() {
+    sounds.play('click');
     theme.toggle();
   }
 </script>
