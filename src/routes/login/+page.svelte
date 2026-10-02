@@ -1,10 +1,19 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { page } from '$app/stores';
   import { authApi } from '$lib/api/auth';
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
+  import { resolveRedirect, type RedirectPath } from '$lib/auth/redirect';
   import { sounds } from '$lib/audio/sounds';
   import { session } from '$lib/stores/session';
+
+  const registerHref = $derived.by((): RedirectPath => {
+    const redirectParam = $page.url.searchParams.get('redirect');
+    return redirectParam
+      ? (`/register?redirect=${encodeURIComponent(redirectParam)}` as RedirectPath)
+      : '/register';
+  });
 
   let visible = $state(false);
   let inputEmail = $state('');
@@ -24,7 +33,9 @@
         password: inputPassword
       });
       session.setUser(response.user);
-      await goto(resolve('/lobby'));
+      const redirectParam = $page.url.searchParams.get('redirect');
+      const destination = resolveRedirect(redirectParam);
+      await goto(resolve(destination));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         error = 'Invalid email or password.';
@@ -100,7 +111,7 @@
       {submitting ? 'Signing in…' : 'Sign in'}
     </button>
     <a
-      href={resolve('/register')}
+      href={resolve(registerHref)}
       onclick={handleRegisterClick}
       class="block w-full rounded-full border border-[var(--neon-cyan)] px-4 py-4 md:py-5 text-center uppercase tracking-widest text-[var(--neon-cyan)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] active:scale-95"
     >
