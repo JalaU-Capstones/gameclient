@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   play: vi.fn(),
   logout: vi.fn(),
   clear: vi.fn(),
-  markHydrated: vi.fn(),
+  resetHistory: vi.fn(),
   goto: vi.fn(),
   resolve: vi.fn((path: string) => path)
 }));
@@ -29,10 +29,15 @@ vi.mock('$lib/audio/sounds', () => ({
   }
 }));
 
+vi.mock('$lib/navigation/history', () => ({
+  navigationHistory: {
+    reset: mocks.resetHistory
+  }
+}));
+
 vi.mock('$lib/stores/session', () => ({
   session: {
-    clear: mocks.clear,
-    markHydrated: mocks.markHydrated
+    clear: mocks.clear
   }
 }));
 
@@ -43,7 +48,7 @@ describe('performLogout', () => {
     mocks.play.mockReset();
     mocks.logout.mockReset();
     mocks.clear.mockReset();
-    mocks.markHydrated.mockReset();
+    mocks.resetHistory.mockReset();
     mocks.goto.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.goto.mockResolvedValue(undefined);
@@ -57,7 +62,7 @@ describe('performLogout', () => {
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(mocks.logout).toHaveBeenCalledTimes(1);
     expect(mocks.clear).toHaveBeenCalledTimes(1);
-    expect(mocks.markHydrated).toHaveBeenCalledTimes(1);
+    expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
   });
 
@@ -67,7 +72,7 @@ describe('performLogout', () => {
     await performLogout();
 
     expect(mocks.clear).toHaveBeenCalledTimes(1);
-    expect(mocks.markHydrated).toHaveBeenCalledTimes(1);
+    expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
   });
 });
