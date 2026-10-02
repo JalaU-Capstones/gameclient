@@ -2,6 +2,7 @@ import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { authApi } from '$lib/api/auth';
 import { sounds } from '$lib/audio/sounds';
+import { navigationHistory } from '$lib/navigation/history';
 import { session } from '$lib/stores/session';
 
 /**
@@ -23,7 +24,7 @@ export async function performLogout(): Promise<void> {
     // Silent — the user is logged out locally regardless.
   } finally {
     session.clear();
-    session.markHydrated();
+    navigationHistory.reset();
     await goto(resolve('/login'));
   }
 }
