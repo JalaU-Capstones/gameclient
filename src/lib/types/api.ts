@@ -63,6 +63,12 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 export interface AuthResponse {
   accessToken: string;
   tokenType: string;

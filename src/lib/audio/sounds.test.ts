@@ -102,6 +102,15 @@ describe('AudioService', () => {
     expect(FakeAudioContext.instances).toHaveLength(0);
   });
 
+  it('does nothing when an unknown sound is requested', async () => {
+    await service.unlock();
+    service.play('click');
+    service.play('unknown' as never);
+
+    expect(FakeAudioContext.instances[0].createBufferSource).toHaveBeenCalledTimes(1);
+    expect(service.isUnlocked()).toBe(true);
+  });
+
   it('does nothing when a sound fails to load', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/sounds/click.wav') throw new Error('Unavailable');
