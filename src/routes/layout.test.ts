@@ -17,11 +17,12 @@ const mocks = vi.hoisted(() => ({
 const stubChild = (() => 'content') as unknown as Snippet;
 
 let currentPath = '/lobby';
+let currentSearch = '';
 
 vi.mock('$app/stores', () => ({
   page: {
-    subscribe: (fn: (value: { url: { pathname: string } }) => void) => {
-      fn({ url: { pathname: currentPath } });
+    subscribe: (fn: (value: { url: { pathname: string; search: string } }) => void) => {
+      fn({ url: { pathname: currentPath, search: currentSearch } });
       return () => {};
     }
   }
@@ -55,6 +56,7 @@ vi.mock('$app/paths', () => ({
 describe('layout auth guard', () => {
   beforeEach(() => {
     currentPath = '/lobby';
+    currentSearch = '';
     session.reset();
     mocks.get.mockReset();
     mocks.goto.mockReset();
@@ -83,6 +85,24 @@ describe('layout auth guard', () => {
   });
 
   it('clears the session and redirects to /login when /auth/me returns 401', async () => {
+    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+
+    render(Layout, { props: { children: stubChild } });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login?redirect=%2Flobby'));
+  });
+
+  it('preserves the intended destination when redirecting an unauthenticated user', async () => {
+    currentPath = '/history';
+    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+
+    render(Layout, { props: { children: stubChild } });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login?redirect=%2Fhistory'));
+  });
+
+  it('redirects the root route to login without a return destination', async () => {
+    currentPath = '/';
     mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
 
     render(Layout, { props: { children: stubChild } });
