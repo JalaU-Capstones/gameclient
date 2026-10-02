@@ -1,13 +1,20 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { theme } from '$lib/stores/theme';
 import ThemeToggle from './ThemeToggle.svelte';
+
+const mocks = vi.hoisted(() => ({ play: vi.fn() }));
+
+vi.mock('$lib/audio/sounds', () => ({
+  sounds: { play: mocks.play }
+}));
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.className = '';
   theme.set('dark');
+  mocks.play.mockReset();
 });
 
 describe('ThemeToggle', () => {
@@ -25,5 +32,6 @@ describe('ThemeToggle', () => {
 
     expect(document.documentElement).toHaveClass('light');
     expect(document.documentElement).not.toHaveClass('dark');
+    expect(mocks.play).toHaveBeenCalledWith('click');
   });
 });
