@@ -1,25 +1,52 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { authApi } from '$lib/api/auth';
+  import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
+  import { sounds } from '$lib/audio/sounds';
   import { session } from '$lib/stores/session';
-  import { goto } from '$app/navigation';
+
   let visible = $state(false);
   let inputEmail = $state('');
   let inputPassword = $state('');
   let error = $state('');
+  let submitting = $state(false);
 
-  async function iniciarSesion(event: SubmitEvent) {
+  async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
+    sounds.play('click');
     error = '';
+    submitting = true;
 
     try {
-      await authApi.login({ email: inputEmail, password: inputPassword });
-      const user = await authApi.me();
-      session.setUser(user);
+      const response = await authApi.login({
+        email: inputEmail,
+        password: inputPassword
+      });
+      session.setUser(response.user);
       await goto(resolve('/lobby'));
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Algo salió mal';
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        error = 'Invalid email or password.';
+      } else if (err instanceof NetworkError) {
+        error = 'Cannot reach the server. Check your connection.';
+      } else if (err instanceof TimeoutError) {
+        error = 'The server took too long to respond. Try again.';
+      } else {
+        error = err instanceof Error ? err.message : 'Something went wrong.';
+      }
+    } finally {
+      submitting = false;
     }
+  }
+
+  function handleToggleVisibility() {
+    sounds.play('click');
+    visible = !visible;
+  }
+
+  function handleRegisterClick() {
+    sounds.play('click');
   }
 </script>
 
@@ -27,7 +54,7 @@
   class="space-y-14 py-8 px-6 text-center mx-auto max-w-lg min-h-[70vh] flex flex-col justify-center"
 >
   <h2 class="text-4xl uppercase tracking-[0.25em] text-[var(--neon-cyan)]">Login</h2>
-  <form onsubmit={iniciarSesion} class="space-y-10">
+  <form onsubmit={handleSubmit} class="space-y-10">
     <div class="space-y-4">
       <p class="font-bold text-[var(--text-primary)] text-xl md:text-3xl text-left">
         Insert your email
@@ -55,7 +82,7 @@
         />
         <button
           type="button"
-          onclick={() => (visible = !visible)}
+          onclick={handleToggleVisibility}
           class="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-sm! uppercase tracking-widest text-[var(--neon-cyan)] transition hover:text-[var(--neon-magenta)]"
         >
           {visible ? 'HIDE' : 'SHOW'}
@@ -67,12 +94,14 @@
     {/if}
     <button
       type="submit"
-      class="w-full rounded-full border border-[var(--neon-magenta)] px-4 py-4 md:py-5 uppercase tracking-widest text-[var(--neon-magenta)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95"
+      disabled={submitting}
+      class="w-full rounded-full border border-[var(--neon-magenta)] px-4 py-4 md:py-5 uppercase tracking-widest text-[var(--neon-magenta)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      Sign in
+      {submitting ? 'Signing in…' : 'Sign in'}
     </button>
     <a
       href={resolve('/register')}
+      onclick={handleRegisterClick}
       class="block w-full rounded-full border border-[var(--neon-cyan)] px-4 py-4 md:py-5 text-center uppercase tracking-widest text-[var(--neon-cyan)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] active:scale-95"
     >
       Register
