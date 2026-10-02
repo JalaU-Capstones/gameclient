@@ -12,7 +12,17 @@ const mocks = vi.hoisted(() => ({
   me: vi.fn(),
   logout: vi.fn(),
   goto: vi.fn(),
-  resolve: (path: string) => path
+  resolve: (path: string) => path,
+  page: { url: { searchParams: new URLSearchParams() } }
+}));
+
+vi.mock('$app/stores', () => ({
+  page: {
+    subscribe: (fn: (value: typeof mocks.page) => void) => {
+      fn(mocks.page);
+      return () => {};
+    }
+  }
 }));
 
 vi.mock('$lib/audio/sounds', () => ({
@@ -49,6 +59,7 @@ describe('Login page', () => {
     mocks.me.mockReset();
     mocks.goto.mockReset();
     mocks.resolve = (path: string) => path;
+    mocks.page.url.searchParams = new URLSearchParams();
   });
 
   it('plays a click when the show/hide toggle is clicked', async () => {
@@ -67,6 +78,16 @@ describe('Login page', () => {
     await user.click(screen.getByRole('link', { name: 'Register' }));
 
     expect(mocks.play).toHaveBeenCalledWith('click');
+  });
+
+  it('preserves the redirect destination when opening registration', () => {
+    mocks.page.url.searchParams = new URLSearchParams('redirect=%2Fhistory');
+    render(LoginPage);
+
+    expect(screen.getByRole('link', { name: 'Register' })).toHaveAttribute(
+      'href',
+      '/register?redirect=%2Fhistory'
+    );
   });
 
   it('plays a click when the form is submitted', async () => {
@@ -142,6 +163,50 @@ describe('Login page', () => {
     });
     unsubscribe();
     expect(currentUser).toEqual(userPayload);
+  });
+
+  it('navigates to a valid redirect destination after login', async () => {
+    const user = userEvent.setup();
+    mocks.page.url.searchParams = new URLSearchParams('redirect=%2Fhistory');
+    mocks.login.mockResolvedValue({
+      access_token: 'abc',
+      token_type: 'bearer',
+      user: {
+        id: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      }
+    });
+    render(LoginPage);
+
+    await user.type(screen.getByPlaceholderText('Email'), 'ada@example.com');
+    await user.type(screen.getByPlaceholderText('Password'), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/history'));
+  });
+
+  it('rejects an external redirect destination after login', async () => {
+    const user = userEvent.setup();
+    mocks.page.url.searchParams = new URLSearchParams('redirect=https%3A%2F%2Fevil.com');
+    mocks.login.mockResolvedValue({
+      access_token: 'abc',
+      token_type: 'bearer',
+      user: {
+        id: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      }
+    });
+    render(LoginPage);
+
+    await user.type(screen.getByPlaceholderText('Email'), 'ada@example.com');
+    await user.type(screen.getByPlaceholderText('Password'), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
   });
 
   it('shows the invalid credentials message when the API responds with 401', async () => {
