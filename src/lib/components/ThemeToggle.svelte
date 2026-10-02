@@ -14,7 +14,7 @@
 <button
   type="button"
   aria-label={label}
-  class="rounded-full border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-[var(--text-primary)] shadow-[var(--glow-cyan)] transition hover:scale-[1.02]"
+  class="rounded-full border border-[var(--neon-magenta)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-magenta)] transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 md:text-sm"
   on:click={toggleTheme}
 >
   {isDark ? 'Light' : 'Dark'}
