@@ -1,8 +1,11 @@
 import { httpClient } from './client';
-import type { LoginPayload, User } from '$lib/types/api';
+import type { LoginPayload, LoginResponse, User } from '$lib/types/api';
 
 export const authApi = {
-  login: (payload: LoginPayload) => httpClient.post<unknown>('/api/v2/auth/login', payload),
-  me: () => httpClient.get<User>('/api/v2/auth/me'),
-  logout: () => httpClient.post<void>('/api/v2/auth/logout')
+  login: (payload: LoginPayload): Promise<LoginResponse> =>
+    httpClient.post<LoginResponse>('/api/v2/auth/login', payload),
+
+  me: (): Promise<User> => httpClient.get<User>('/api/v2/auth/me'),
+
+  logout: (): Promise<void> => httpClient.post<void>('/api/v2/auth/logout')
 };
