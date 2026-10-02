@@ -52,7 +52,15 @@
     if (!$isHydrated) return;
     if ($isAuthenticated) return;
     if (isPublicRoute) return;
-    goto(resolve('/login'));
+
+    if ($page.url.pathname === '/') {
+      goto(resolve('/login'));
+      return;
+    }
+
+    const redirectTo = $page.url.pathname + $page.url.search;
+    const url = resolve(`/login?redirect=${encodeURIComponent(redirectTo)}`);
+    goto(url);
   });
 
   $effect(() => {
