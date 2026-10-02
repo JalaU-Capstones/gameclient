@@ -1,17 +1,33 @@
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import type { Snippet } from 'svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { navigationHistory } from '$lib/navigation/history';
 import Layout from './+layout.svelte';
+import LoginLayoutHarness from '../tests/harnesses/LoginLayoutHarness.svelte';
 import { session } from '$lib/stores/session';
+
+interface PageSnapshot {
+  url: {
+    pathname: string;
+    search: string;
+    searchParams: URLSearchParams;
+  };
+}
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   goto: vi.fn(),
   resolve: vi.fn((path: string) => path),
+  login: vi.fn(),
+  logout: vi.fn(),
+  play: vi.fn(),
   unlock: vi.fn(),
-  performLogout: vi.fn(),
-  page: { pathname: '/lobby' }
+  afterNavigateCallbacks: [] as Array<
+    (navigation: { to: { url: { pathname: string } } | null }) => void
+  >,
+  subscribers: [] as Array<(value: PageSnapshot) => void>
 }));
 
 const stubChild = (() => 'content') as unknown as Snippet;
@@ -19,11 +35,52 @@ const stubChild = (() => 'content') as unknown as Snippet;
 let currentPath = '/lobby';
 let currentSearch = '';
 
+function getPageSnapshot(): PageSnapshot {
+  return {
+    url: {
+      pathname: currentPath,
+      search: currentSearch,
+      searchParams: new URLSearchParams(currentSearch)
+    }
+  };
+}
+
+function publishPage() {
+  for (const subscriber of mocks.subscribers) {
+    subscriber(getPageSnapshot());
+  }
+}
+
+function publishNavigation(pathname: string) {
+  currentPath = pathname;
+  currentSearch = '';
+  publishPage();
+  for (const callback of mocks.afterNavigateCallbacks) {
+    callback({ to: { url: { pathname } } });
+  }
+}
+
+function mockNavigation() {
+  mocks.goto.mockImplementation(async (target: string) => {
+    const url = new URL(target, 'http://localhost');
+    currentPath = url.pathname;
+    currentSearch = url.search;
+    publishPage();
+    for (const callback of mocks.afterNavigateCallbacks) {
+      callback({ to: { url: { pathname: url.pathname } } });
+    }
+  });
+}
+
 vi.mock('$app/stores', () => ({
   page: {
-    subscribe: (fn: (value: { url: { pathname: string; search: string } }) => void) => {
-      fn({ url: { pathname: currentPath, search: currentSearch } });
-      return () => {};
+    subscribe: (fn: (value: PageSnapshot) => void) => {
+      mocks.subscribers.push(fn);
+      fn(getPageSnapshot());
+      return () => {
+        const subscriberIndex = mocks.subscribers.indexOf(fn);
+        if (subscriberIndex !== -1) mocks.subscribers.splice(subscriberIndex, 1);
+      };
     }
   }
 }));
@@ -34,19 +91,25 @@ vi.mock('$lib/api/client', () => ({
   }
 }));
 
-vi.mock('$lib/auth/logout', () => ({
-  performLogout: mocks.performLogout
+vi.mock('$lib/api/auth', () => ({
+  authApi: {
+    login: mocks.login,
+    logout: mocks.logout
+  }
 }));
 
 vi.mock('$lib/audio/sounds', () => ({
   sounds: {
     unlock: mocks.unlock,
-    play: vi.fn()
+    play: mocks.play
   }
 }));
 
 vi.mock('$app/navigation', () => ({
-  goto: mocks.goto
+  goto: mocks.goto,
+  afterNavigate: (callback: (navigation: { to: { url: { pathname: string } } | null }) => void) => {
+    mocks.afterNavigateCallbacks.push(callback);
+  }
 }));
 
 vi.mock('$app/paths', () => ({
@@ -57,12 +120,21 @@ describe('layout auth guard', () => {
   beforeEach(() => {
     currentPath = '/lobby';
     currentSearch = '';
+    mocks.subscribers.length = 0;
+    mocks.afterNavigateCallbacks.length = 0;
     session.reset();
+    navigationHistory.reset();
     mocks.get.mockReset();
     mocks.goto.mockReset();
+    mocks.login.mockReset();
+    mocks.logout.mockReset();
+    mocks.play.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
-    mocks.performLogout.mockReset();
     mocks.unlock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('hydrates the session when /auth/me succeeds', async () => {
@@ -110,15 +182,55 @@ describe('layout auth guard', () => {
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login'));
   });
 
-  it('skips the hydration check on public routes', async () => {
+  it.each([
+    ['/login', '', '/lobby'],
+    ['/login', '?redirect=%2Fhistory', '/history'],
+    ['/login', '?redirect=https%3A%2F%2Fevil.com', '/lobby'],
+    ['/register', '', '/lobby']
+  ])(
+    'redirects an authenticated user at %s%s to %s without clearing the session',
+    async (path, search, destination) => {
+      currentPath = path;
+      currentSearch = search;
+      const clearSpy = vi.spyOn(session, 'clear');
+      session.setUser({
+        id: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      });
+
+      render(Layout, { props: { children: stubChild } });
+
+      await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(destination));
+      expect(clearSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId('logout-button')).toBeInTheDocument();
+      let currentUser: string | null = null;
+      const unsubscribe = session.subscribe((state) => {
+        currentUser = state.user?.id ?? null;
+      });
+      unsubscribe();
+      expect(currentUser).toBe('1');
+    }
+  );
+
+  it('hydrates an existing session on public routes and honors its redirect destination', async () => {
     currentPath = '/login';
+    currentSearch = '?redirect=%2Fhistory';
+    mocks.get.mockResolvedValue({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
     render(Layout, { props: { children: stubChild } });
 
-    await Promise.resolve();
-    expect(mocks.get).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v2/auth/me'));
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/history'));
+    expect(screen.getByTestId('logout-button')).toBeInTheDocument();
   });
 
-  it('does not render the logout button on the login page', () => {
+  it('renders the logout button while an authenticated user is on the login page', () => {
     currentPath = '/login';
     session.setUser({
       id: '1',
@@ -129,7 +241,7 @@ describe('layout auth guard', () => {
 
     render(Layout, { props: { children: stubChild } });
 
-    expect(screen.queryByTestId('logout-button')).not.toBeInTheDocument();
+    expect(screen.getByTestId('logout-button')).toBeInTheDocument();
   });
 
   it('renders the logout button on protected routes for authenticated users', () => {
@@ -146,7 +258,7 @@ describe('layout auth guard', () => {
     expect(screen.getByTestId('logout-button')).toBeInTheDocument();
   });
 
-  it('calls performLogout when the logout button is clicked', async () => {
+  it('returns to the previous protected route and hides the back button', async () => {
     currentPath = '/lobby';
     session.setUser({
       id: '1',
@@ -157,8 +269,98 @@ describe('layout auth guard', () => {
 
     render(Layout, { props: { children: stubChild } });
 
-    await fireEvent.click(screen.getByTestId('logout-button'));
+    publishNavigation('/lobby');
+    publishNavigation('/history');
+    await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
 
-    expect(mocks.performLogout).toHaveBeenCalledTimes(1);
+    mockNavigation();
+    await fireEvent.click(screen.getByTestId('back-button'));
+
+    await waitFor(() => expect(currentPath).toBe('/lobby'));
+    expect(mocks.goto).toHaveBeenCalledWith('/lobby');
+    expect(mocks.play).toHaveBeenCalledWith('click');
+    expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+  });
+
+  it('resets history on logout and allows back navigation after a fresh login', async () => {
+    currentPath = '/lobby';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    mocks.logout.mockResolvedValue(undefined);
+
+    render(Layout, { props: { children: stubChild } });
+
+    publishNavigation('/lobby');
+    publishNavigation('/history');
+    await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
+
+    mockNavigation();
+    await userEvent.setup().click(screen.getByTestId('logout-button'));
+
+    await waitFor(() => expect(currentPath).toBe('/login'));
+    expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+    let entries: string[] = [];
+    const unsubscribe = navigationHistory.subscribe((current) => {
+      entries = current;
+    });
+    unsubscribe();
+    expect(entries).toEqual([]);
+
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    publishNavigation('/lobby');
+    publishNavigation('/game/xyz');
+    await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
+
+    await userEvent.setup().click(screen.getByTestId('back-button'));
+
+    await waitFor(() => expect(currentPath).toBe('/lobby'));
+    expect(mocks.goto).toHaveBeenCalledWith('/lobby');
+    expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+  });
+
+  it('keeps a successful login on the intended destination', async () => {
+    currentPath = '/login';
+    currentSearch = '?redirect=%2Fhistory';
+    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+    mocks.login.mockResolvedValue({
+      access_token: 'abc',
+      token_type: 'bearer',
+      user: {
+        id: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      }
+    });
+    mocks.goto.mockImplementation(async (target: string) => {
+      const url = new URL(target, 'http://localhost');
+      currentPath = url.pathname;
+      currentSearch = url.search;
+      publishPage();
+    });
+    const clearSpy = vi.spyOn(session, 'clear');
+    const user = userEvent.setup();
+    render(LoginLayoutHarness);
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v2/auth/me'));
+    clearSpy.mockClear();
+    await user.type(screen.getByPlaceholderText('Email'), 'ada@example.com');
+    await user.type(screen.getByPlaceholderText('Password'), 'secret123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(currentPath).toBe('/history'));
+    expect(mocks.goto).toHaveBeenCalledWith('/history');
+    expect(mocks.goto).not.toHaveBeenCalledWith('/lobby');
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('logout-button')).toBeInTheDocument();
   });
 });
