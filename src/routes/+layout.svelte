@@ -12,7 +12,7 @@
   import { resolveRedirect } from '$lib/auth/redirect';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-  import { isAuthenticated, isHydrated, session } from '$lib/stores/session';
+  import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
   import type { User } from '$lib/types/api';
   import '../app.css';
 
@@ -98,7 +98,14 @@
 
 <div class="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] transition-colors duration-200">
   <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-    <GameTitle text="TIC TAC TOE" />
+    <div class="flex flex-col">
+      <GameTitle text="TIC TAC TOE" />
+      {#if $isAuthenticated && $currentUser}
+        <span class="text-[var(--neon-cyan)] text-xs uppercase tracking-widest mt-1 opacity-80">
+          Welcome, {$currentUser.name}
+        </span>
+      {/if}
+    </div>
 
     <div class="flex items-center gap-3">
       {#if $isAuthenticated && canGoBack}
