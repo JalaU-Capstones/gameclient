@@ -11,6 +11,14 @@ RUN corepack enable
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+ARG PUBLIC_API_BASE=""
+ARG PUBLIC_WS_BASE=""
+ARG PUBLIC_REQUEST_TIMEOUT_MS="15000"
+ENV PUBLIC_API_BASE=$PUBLIC_API_BASE
+ENV PUBLIC_WS_BASE=$PUBLIC_WS_BASE
+ENV PUBLIC_REQUEST_TIMEOUT_MS=$PUBLIC_REQUEST_TIMEOUT_MS
+
 RUN pnpm build
 RUN pnpm prune --prod --ignore-scripts
 
