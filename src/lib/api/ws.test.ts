@@ -1,4 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('$lib/config', () => ({
+  config: {
+    apiBaseUrl: '',
+    wsBaseUrl: '',
+    requestTimeoutMs: 15000
+  },
+  buildWsUrl: (path: string) => `ws://localhost:3000${path}`
+}));
+
 import WS from 'vitest-websocket-mock';
 import { get } from 'svelte/store';
 import { createWebSocketClient } from './ws';
