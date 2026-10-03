@@ -26,23 +26,24 @@ cp .env.example .env
 
 ## Comandos con Makefile
 
-| Comando             | Descripción                      |
-| ------------------- | -------------------------------- |
-| `make install`      | Instala dependencias con pnpm    |
-| `make dev`          | Inicia el servidor de desarrollo |
-| `make build`        | Compila en producción            |
-| `make preview`      | Previsualiza el build            |
-| `make start`        | Sirve el build con adapter-node  |
-| `make test`         | Ejecuta los tests                |
-| `make test-cov`     | Ejecuta tests con cobertura      |
-| `make lint`         | Ejecuta Prettier y ESLint        |
-| `make format`       | Formatea el proyecto             |
-| `make check`        | Ejecuta el typecheck de Svelte   |
-| `make clean`        | Elimina cachés y artefactos      |
-| `make docker-build` | Compila la imagen Docker         |
-| `make docker-up`    | Levanta el contenedor            |
-| `make docker-down`  | Detiene el contenedor            |
-| `make docker-logs`  | Muestra logs del contenedor      |
+| Comando               | Descripción                             |
+| --------------------- | --------------------------------------- |
+| `make install`        | Instala dependencias con pnpm           |
+| `make dev`            | Inicia el servidor de desarrollo        |
+| `make build`          | Compila en producción                   |
+| `make preview`        | Previsualiza el build                   |
+| `make start`          | Sirve el build con adapter-node         |
+| `make test`           | Ejecuta los tests                       |
+| `make test-cov`       | Ejecuta tests con cobertura             |
+| `make lint`           | Ejecuta Prettier y ESLint               |
+| `make format`         | Formatea el proyecto                    |
+| `make check`          | Ejecuta el typecheck de Svelte          |
+| `make clean`          | Elimina cachés y artefactos             |
+| `make docker-build`   | Compila la imagen Docker                |
+| `make docker-up`      | Levanta el contenedor                   |
+| `make docker-down`    | Detiene el contenedor                   |
+| `make docker-rebuild` | Reconstruye sin caché y reinicia Docker |
+| `make docker-logs`    | Muestra logs del contenedor             |
 
 ## Desarrollo
 
@@ -51,6 +52,172 @@ pnpm dev
 ```
 
 La aplicación se ejecuta en `http://localhost:5173` y usa el proxy de Vite para redirigir `/api` y `/health` hacia `http://localhost:8080`.
+
+## Docker
+
+El cliente incluye un `Dockerfile` multi-stage y un `docker-compose.yml`
+para desarrollo local y pruebas. El contenedor sirve el SPA construido
+con `adapter-node` en el puerto `3000`.
+
+### Levantar el stack
+
+```bash
+make docker-up       # o: docker compose up --build -d
+```
+
+Una vez arriba, abre <http://localhost:3000>.
+
+### Build args vs runtime env vars
+
+Las variables `PUBLIC_*` de SvelteKit se inline-an en el bundle **durante
+el build**, no se leen en runtime. Por eso se pasan como `build.args` en
+`docker-compose.yml` y no como `environment:`. Si solo se definieran en
+`environment:`, el SPA se compilaría con valores vacíos y las peticiones
+saldrían hacia el propio contenedor (404).
+
+Variables de build:
+
+- `PUBLIC_API_BASE` — Base URL del backend HTTP.
+- `PUBLIC_WS_BASE` — Base URL del WebSocket.
+- `PUBLIC_REQUEST_TIMEOUT_MS` — Timeout HTTP en milisegundos.
+
+Variables de runtime (leídas por `adapter-node`):
+
+- `PORT` — Puerto de escucha.
+- `HOST` — Host de escucha.
+- `ORIGIN` — Origen público del servidor (para URLs absolutas y
+  redirects).
+
+**Cualquier cambio en las variables de build requiere reconstruir la
+imagen**, no solo reiniciar el contenedor:
+
+```bash
+docker compose build --no-cache frontend
+docker compose up -d
+```
+
+### Comunicación con el backend
+
+Dentro del contenedor **no existe el proxy de Vite**. El SPA necesita
+URLs absolutas para hablar con el backend. Se configuran mediante dos
+variables específicas de Docker:
+
+| Variable                 | Default                 | Descripción                    |
+| ------------------------ | ----------------------- | ------------------------------ |
+| `DOCKER_PUBLIC_API_BASE` | `http://localhost:8080` | Base URL HTTP del backend      |
+| `DOCKER_PUBLIC_WS_BASE`  | `http://localhost:8080` | Base URL WebSocket del backend |
+
+**Nunca** se leen desde `PUBLIC_API_BASE`/`PUBLIC_WS_BASE` porque esos
+valores están pensados para el modo `pnpm dev` (donde el proxy de Vite
+los resuelve).
+
+### Apuntar el contenedor a un backend desplegado
+
+```bash
+DOCKER_PUBLIC_API_BASE=https://gameapi-9vos.onrender.com \
+DOCKER_PUBLIC_WS_BASE=https://gameapi-9vos.onrender.com \
+docker compose up --build
+```
+
+### Apuntar el contenedor a un backend en el host
+
+Cuando el backend corre en tu máquina (por ejemplo con `make dev` en el
+repositorio `gameapi`) y el frontend corre en Docker, el contenedor
+necesita una dirección para alcanzar el host.
+
+El `docker-compose.yml` ya incluye:
+
+```yaml
+extra_hosts:
+  - 'host.docker.internal:host-gateway'
+```
+
+Esto hace que `host.docker.internal` funcione igual en Linux, macOS y
+Windows sin configuración adicional.
+
+Configura el `.env`:
+
+```
+DOCKER_PUBLIC_API_BASE=http://localhost:8080
+DOCKER_PUBLIC_WS_BASE=http://localhost:8080
+```
+
+El navegador es quien realiza las llamadas del SPA. Si el navegador y el
+backend están en la misma máquina, debe usar `localhost`; el alias
+`host.docker.internal` de `extra_hosts` solo se resuelve dentro de los
+contenedores Docker y no en el navegador del host.
+
+La entrada `host.docker.internal:host-gateway` permite verificar desde
+el contenedor que se alcanza un backend que escucha en una interfaz del
+host. Para comprobarlo, reconstruye y ejecuta `make docker-verify`:
+
+```bash
+make docker-rebuild
+make docker-verify
+```
+
+### CORS en el backend
+
+Cuando el frontend corre en `http://localhost:3000` y llama al backend en
+`http://localhost:8080`, la petición es **cross-origin**. El backend debe
+permitir ese origen con credenciales:
+
+```
+# En el .env del backend
+CORS_ORIGINS=http://localhost:3000
+```
+
+Si el backend corre con `CORS_ORIGINS=*` y `allow_credentials=True`, el
+navegador **rechazará** las respuestas por seguridad. Es una regla del
+estándar CORS: no se puede combinar wildcard con credenciales.
+
+### Troubleshooting
+
+**Error 404 en `/api/v2/auth/*` desde el navegador:**
+
+El contenedor está sirviendo el SPA pero no encuentra las rutas de la
+API. Confirma que los build args y la URL configurada estén presentes:
+
+```bash
+# 1. Confirmar que Compose resolvió los build args
+docker compose config | grep -A4 "args:"
+
+# 2. Confirmar que la URL está en el bundle construido
+docker compose exec frontend sh -c \
+  'grep -roE "host\.docker\.internal:8080|localhost:8080" build/ | head -3'
+
+# 3. Confirmar que el contenedor puede alcanzar el backend en el host
+docker compose exec frontend sh -c \
+  'wget -qO- http://host.docker.internal:8080/health || echo FAIL'
+```
+
+La primera salida debe mostrar las bases URL resueltas. La segunda debe
+mostrar al menos una coincidencia con la URL configurada. La tercera
+debe devolver `{"status":"ok"}`.
+
+**Error CORS en el navegador:**
+
+El backend no está permitiendo el origen del frontend. Verifica:
+
+```bash
+curl -i -X OPTIONS http://localhost:8080/api/v2/auth/login \
+  -H "Origin: http://localhost:3000" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+Debe devolver `Access-Control-Allow-Origin: http://localhost:3000` y
+`Access-Control-Allow-Credentials: true`.
+
+**Las cookies no se envían al backend:**
+
+Los JWT viajan en cookies `HttpOnly`. Con `SameSite=Lax`, el navegador
+las envía en peticiones cross-origin **siempre que ambos hosts
+compartan el mismo dominio registrable**. `localhost:3000` y
+`localhost:8080` lo comparten, por lo que las cookies funcionan en
+local. En producción, si frontend y backend están en dominios
+distintos, hay que configurar `SameSite=None; Secure` en el backend y
+usar HTTPS.
 
 ## Estructura del proyecto
 
@@ -188,21 +355,6 @@ MIT).
 ## Integración continua
 
 El proyecto usa Vitest y SvelteKit para validar calidad en cada cambio. La cobertura mínima se deja en 70% para evitar regresiones en la capa de cliente.
-
-## Docker
-
-```bash
-docker build -t gameclient:dev .
-docker compose up
-```
-
-Variables relevantes:
-
-- `PUBLIC_API_BASE`
-- `PUBLIC_WS_BASE`
-- `PUBLIC_REQUEST_TIMEOUT_MS`
-- `ORIGIN` para `adapter-node`
-- `APP_PORT`
 
 ## Licencia
 
