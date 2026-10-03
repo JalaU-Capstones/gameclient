@@ -3,14 +3,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PUBLIC_API_BASE: ${DOCKER_PUBLIC_API_BASE:-http://localhost:8080}
+        PUBLIC_WS_BASE: ${DOCKER_PUBLIC_WS_BASE:-http://localhost:8080}
+        PUBLIC_REQUEST_TIMEOUT_MS: ${PUBLIC_REQUEST_TIMEOUT_MS:-15000}
     container_name: gameclient
     restart: unless-stopped
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '${APP_PORT:-3000}:3000'
     environment:
       PORT: 3000
       HOST: 0.0.0.0
-      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8080}
       ORIGIN: ${ORIGIN:-http://localhost:3000}
     healthcheck:
       test:
