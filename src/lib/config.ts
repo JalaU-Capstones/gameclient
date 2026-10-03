@@ -1,6 +1,8 @@
 /**
- * Runtime configuration derived from Vite's PUBLIC_* env vars.
+ * Build-time configuration derived from SvelteKit's PUBLIC_* env vars.
  */
+
+import { PUBLIC_API_BASE, PUBLIC_REQUEST_TIMEOUT_MS, PUBLIC_WS_BASE } from '$env/static/public';
 
 interface AppConfig {
   apiBaseUrl: string;
@@ -8,12 +10,10 @@ interface AppConfig {
   requestTimeoutMs: number;
 }
 
-const env = import.meta.env;
-
 export const config: AppConfig = {
-  apiBaseUrl: env.PUBLIC_API_BASE ?? '',
-  wsBaseUrl: env.PUBLIC_WS_BASE ?? '',
-  requestTimeoutMs: Number(env.PUBLIC_REQUEST_TIMEOUT_MS ?? 15_000)
+  apiBaseUrl: PUBLIC_API_BASE ?? '',
+  wsBaseUrl: PUBLIC_WS_BASE ?? '',
+  requestTimeoutMs: Number(PUBLIC_REQUEST_TIMEOUT_MS ?? 15_000)
 };
 
 export function buildWsUrl(path: string): string {
