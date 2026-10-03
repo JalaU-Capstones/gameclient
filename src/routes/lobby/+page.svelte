@@ -3,18 +3,21 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { authApi } from '$lib/api/auth';
+  import { httpClient } from '$lib/api/client';
   import { createPresenceClient, createGameplaysClient } from '$lib/api/ws';
   import { sounds } from '$lib/audio/sounds';
   import { currentUser } from '$lib/stores/session';
   import { ApiError } from '$lib/api/errors';
+  import type { User } from '$lib/types/api';
 
-  let onlineUserIds = $state<string[]>([]);
+  let onlineUsers = $state<User[]>([]);
   let presenceClient = $state<ReturnType<typeof createPresenceClient> | null>(null);
   let gameplaysClient = $state<ReturnType<typeof createGameplaysClient> | null>(null);
 
-  // Incoming invitation state
+  // incoming invitation state
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
   let isSubmitting = $state(false);
+  let waitingForAccept = $state(false);
   let error = $state('');
 
   onMount(async () => {
@@ -28,18 +31,30 @@
         presenceClient?.send('list_online_users');
       });
 
+      async function fetchUsers(userIds: string[]) {
+        const promises = userIds.map(async (id) => {
+          const existing = onlineUsers.find((u) => u.id === id);
+          if (existing) return existing;
+          try {
+            return await httpClient.get<User>(`/api/v2/users/${id}`);
+          } catch {
+            return null;
+          }
+        });
+        const results = await Promise.all(promises);
+        onlineUsers = results.filter((u) => u !== null) as User[];
+      }
+
       presenceClient.on('online_users', (payload: { users: string[] }) => {
-        onlineUserIds = payload.users || [];
+        fetchUsers(payload.users || []);
       });
 
-      presenceClient.on('user_online', (payload: { user_id: string }) => {
-        if (!onlineUserIds.includes(payload.user_id)) {
-          onlineUserIds = [...onlineUserIds, payload.user_id];
-        }
+      presenceClient.on('user_online', () => {
+        presenceClient?.send('list_online_users');
       });
 
-      presenceClient.on('user_offline', (payload: { user_id: string }) => {
-        onlineUserIds = onlineUserIds.filter((id) => id !== payload.user_id);
+      presenceClient.on('user_offline', () => {
+        presenceClient?.send('list_online_users');
       });
 
       // Gameplays Events
@@ -51,20 +66,23 @@
         }
       );
 
-      gameplaysClient.on('game_created', (payload: { game_id: string }) => {
-        goto(resolve(`/game/${payload.game_id}`));
+      gameplaysClient.on('game_created', () => {
+        // Wait for guest to accept. The host will be redirected when invitation_accepted fires.
       });
 
       gameplaysClient.on('invitation_accepted', (payload: { game_id: string }) => {
+        waitingForAccept = false;
         goto(resolve(`/game/${payload.game_id}`));
       });
 
       gameplaysClient.on('invitation_rejected', () => {
+        waitingForAccept = false;
         error = 'Invitation was rejected.';
         setTimeout(() => (error = ''), 3000);
       });
 
       gameplaysClient.on('error', (payload: { message?: string }) => {
+        waitingForAccept = false;
         error = payload.message || 'An error occurred';
         setTimeout(() => (error = ''), 3000);
       });
@@ -87,6 +105,7 @@
 
   function handleInvite(userId: string) {
     sounds.play('click');
+    waitingForAccept = true;
     gameplaysClient?.send('create_game', { guest_id: userId });
   }
 
@@ -111,7 +130,9 @@
   </h2>
 
   {#if error}
-    <div class="bg-red-500/20 border border-red-500 text-red-200 p-4 rounded-xl text-center">
+    <div
+      class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center"
+    >
       {error}
     </div>
   {/if}
@@ -119,25 +140,29 @@
   <div
     class="bg-[var(--cell)] rounded-xl border border-[var(--neon-cyan)] p-6 shadow-[var(--glow-cyan)]"
   >
-    <h3
-      class="text-2xl font-bold mb-6 text-[var(--text-primary)] border-b border-[var(--neon-cyan)] pb-2"
-    >
-      Online Players
-    </h3>
+    <div class="flex items-center justify-between mb-6 border-b border-[var(--neon-cyan)] pb-2">
+      <h3 class="text-2xl font-bold text-[var(--text-primary)]">Online Players</h3>
+      <button
+        onclick={() => presenceClient?.send('list_online_users')}
+        class="text-xs uppercase tracking-widest text-[var(--neon-cyan)] hover:text-[var(--neon-magenta)] transition"
+      >
+        Refresh
+      </button>
+    </div>
 
-    {#if onlineUserIds.length === 0 || (onlineUserIds.length === 1 && onlineUserIds[0] === $currentUser?.id)}
+    {#if onlineUsers.length === 0 || (onlineUsers.length === 1 && onlineUsers[0].id === $currentUser?.id)}
       <p class="text-[var(--text-muted)] text-center py-8 text-xl">Waiting for challengers...</p>
     {:else}
       <ul class="space-y-4">
-        {#each onlineUserIds as userId (userId)}
-          {#if userId !== $currentUser?.id}
+        {#each onlineUsers as user (user.id)}
+          {#if user.id !== $currentUser?.id}
             <li
               class="flex items-center justify-between p-4 bg-[var(--bg)] border border-[var(--neon-cyan)]/30 rounded-lg hover:border-[var(--neon-cyan)] transition"
             >
-              <span class="text-xl font-mono truncate mr-4">{userId}</span>
+              <span class="text-xl font-mono truncate mr-4">{user.name}</span>
               <button
                 class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-                onclick={() => handleInvite(userId)}
+                onclick={() => handleInvite(user.id)}
               >
                 Invite
               </button>
@@ -147,6 +172,21 @@
       </ul>
     {/if}
   </div>
+
+  {#if waitingForAccept}
+    <div
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+    >
+      <div
+        class="bg-[var(--cell)] border-2 border-[var(--neon-cyan)] shadow-[var(--glow-cyan)] rounded-2xl p-8 max-w-md w-full text-center space-y-6 animate-pulse"
+      >
+        <h3 class="text-2xl font-bold uppercase tracking-widest text-[var(--neon-cyan)]">
+          Waiting for opponent...
+        </h3>
+        <p class="text-[var(--text-secondary)]">The challenge has been sent.</p>
+      </div>
+    </div>
+  {/if}
 
   <!-- Incoming Invite Modal -->
   {#if incomingInvite}
