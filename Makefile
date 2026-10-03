@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev build preview start test test-cov lint format check \
-	docker-build docker-up docker-down docker-logs docker-reset clean
+	docker-build docker-up docker-down docker-logs docker-rebuild docker-verify docker-reset clean
 
 help:
 	@echo "Comandos disponibles:"
@@ -19,6 +19,8 @@ help:
 	@echo "  make docker-up      Levanta el contenedor con docker-compose"
 	@echo "  make docker-down    Detiene el contenedor"
 	@echo "  make docker-logs    Ver logs del contenedor"
+	@echo "  make docker-rebuild Reconstruye sin caché y reinicia Docker"
+	@echo "  make docker-verify  Verifica configuración y conectividad Docker"
 	@echo "  make docker-reset   Detiene y borra el volumen (no persistimos datos)"
 
 install:
@@ -65,6 +67,21 @@ docker-down:
 
 docker-logs:
 	docker compose logs -f frontend
+
+docker-rebuild:
+	docker compose build --no-cache frontend
+	docker compose up -d
+	@echo "Rebuilt and restarted. Check http://localhost:3000"
+
+docker-verify:
+	@echo "--- Build args resolved by Compose ---"
+	docker compose config | grep -A4 "args:"
+	@echo ""
+	@echo "--- URL embedded in the bundle ---"
+	docker compose exec frontend sh -c 'grep -roE "host\\.docker\\.internal:8080|localhost:8080" build/ | head -3' || true
+	@echo ""
+	@echo "--- Container can reach the backend ---"
+	docker compose exec frontend sh -c 'wget -qO- http://host.docker.internal:8080/health' || echo "Backend unreachable"
 
 docker-reset:
 	docker compose down -v
