@@ -312,6 +312,17 @@ client.disconnect();
 | `PUBLIC_WS_BASE`            | Base para WebSockets. En desarrollo se puede dejar vacía para derivarse desde `window.location`. |
 | `PUBLIC_REQUEST_TIMEOUT_MS` | Timeout global de cada request HTTP, por defecto `15000`.                                        |
 
+### Variables de entorno y CI
+
+`src/lib/config.ts` lee las variables `PUBLIC_*` de manera defensiva: si
+una variable no está definida, se usa un valor por defecto. Esto evita que
+`svelte-check` falle en CI cuando no existe `.env`.
+
+Aun así, los pipelines de GitHub Actions y GitLab CI declaran valores
+placeholder en sus bloques `env:` y `variables:` para que `svelte-kit sync`
+genere los tipos correctamente. Los valores reales se inyectan en el bundle
+durante `pnpm build` (en Docker, mediante `build.args`).
+
 ### Pruebas
 
 La capa de networking se valida con:
