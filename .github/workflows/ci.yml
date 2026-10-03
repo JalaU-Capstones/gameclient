@@ -11,6 +11,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Public env vars required by SvelteKit's $env/static/public.
+  # Values are placeholders: they are used only for type-checking
+  # during `svelte-kit sync`. Real values are injected at Docker build
+  # time via build args (see docker-compose.yml).
+  PUBLIC_API_BASE: http://localhost:8080
+  PUBLIC_WS_BASE: http://localhost:8080
+  PUBLIC_REQUEST_TIMEOUT_MS: '15000'
+
 jobs:
   quality:
     name: Quality (lint + check)
