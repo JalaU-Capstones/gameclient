@@ -1,8 +1,12 @@
 /**
  * Build-time configuration derived from SvelteKit's PUBLIC_* env vars.
+ *
+ * SvelteKit's `$env/static/public` only exports variables that were
+ * present when `svelte-kit sync` ran. To avoid type errors when the
+ * variables are absent (e.g. a fresh clone without `.env`), we read them
+ * through a small wrapper that falls back to sensible defaults.
  */
-
-import { PUBLIC_API_BASE, PUBLIC_REQUEST_TIMEOUT_MS, PUBLIC_WS_BASE } from '$env/static/public';
+import * as publicEnv from '$env/static/public';
 
 interface AppConfig {
   apiBaseUrl: string;
@@ -10,10 +14,15 @@ interface AppConfig {
   requestTimeoutMs: number;
 }
 
+function readEnv(name: string, fallback: string): string {
+  const value = (publicEnv as Record<string, string | undefined>)[name];
+  return value !== undefined && value !== '' ? value : fallback;
+}
+
 export const config: AppConfig = {
-  apiBaseUrl: PUBLIC_API_BASE ?? '',
-  wsBaseUrl: PUBLIC_WS_BASE ?? '',
-  requestTimeoutMs: Number(PUBLIC_REQUEST_TIMEOUT_MS ?? 15_000)
+  apiBaseUrl: readEnv('PUBLIC_API_BASE', ''),
+  wsBaseUrl: readEnv('PUBLIC_WS_BASE', ''),
+  requestTimeoutMs: Number(readEnv('PUBLIC_REQUEST_TIMEOUT_MS', '15000'))
 };
 
 export function buildWsUrl(path: string): string {
