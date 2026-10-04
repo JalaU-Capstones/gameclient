@@ -8,7 +8,7 @@
   import { globalPresenceClient, globalGameplaysClient } from '$lib/stores/ws';
   import type { WebSocketClient } from '$lib/api/ws';
   import { sounds } from '$lib/audio/sounds';
-  import { currentUser } from '$lib/stores/session';
+  import { currentUser, session } from '$lib/stores/session';
   import { ApiError } from '$lib/api/errors';
   import type { User } from '$lib/types/api';
 
@@ -130,7 +130,8 @@
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } catch (e) {
       if (e instanceof ApiError && e.isUnauthorized) {
-        error = 'Unauthorized. Please log in again.';
+        error = '';
+        session.clear();
       } else {
         error = 'Failed to connect to lobby.';
       }

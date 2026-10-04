@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
+import { ApiError } from '$lib/api/errors';
 import LobbyPage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
@@ -98,6 +99,23 @@ describe('Lobby page', () => {
 
     expect(await screen.findByText('Waiting for challengers...')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
+  });
+
+  it('silently handles an unauthorized refresh instead of showing a lobby error', async () => {
+    mocks.refresh.mockRejectedValue(new ApiError('Unauthorized', 401));
+
+    render(LobbyPage);
+
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
+    expect(screen.queryByText('Unauthorized. Please log in again.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Failed to connect to lobby.')).not.toBeInTheDocument();
+
+    let user: typeof ada | null = ada;
+    const unsubscribe = session.subscribe((state) => {
+      user = state.user;
+    });
+    unsubscribe();
+    expect(user).toBeNull();
   });
 
   it('requests the current online users immediately when mounting with an active connection', async () => {
