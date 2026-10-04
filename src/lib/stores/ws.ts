@@ -16,11 +16,9 @@ function createGlobalWsStore(factory: () => WebSocketClient) {
       return instance;
     },
     disconnect: () => {
-      if (instance) {
-        instance.disconnect();
-        instance = null;
-        set(null);
-      }
+      instance?.disconnect();
+      instance = null;
+      set(null);
     }
   };
 }
