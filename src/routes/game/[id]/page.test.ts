@@ -130,6 +130,19 @@ describe('Game page', () => {
       col: 0
     });
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveTextContent('X');
+    expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveClass('cell-symbol', 'cell-x');
+  });
+
+  it('uses responsive board sizing and pixel-style symbol sizing on narrow screens', async () => {
+    window.innerWidth = 360;
+    render(GamePage);
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Cell 0 0' }));
+    const symbol = screen.getByRole('button', { name: 'Cell 0 0' });
+    const board = symbol.closest('.grid-cols-3');
+
+    expect(symbol).toHaveClass('cell-symbol');
+    expect(board).toHaveClass('w-[min(90vw,400px)]');
   });
 
   it('applies the board, winner, and reason received with game_ended', async () => {

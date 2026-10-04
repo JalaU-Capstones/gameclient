@@ -372,12 +372,13 @@
         {#each board as row, rIndex (rIndex)}
           {#each row as cell, cIndex (cIndex)}
             <button
-              class="w-full h-full rounded-2xl flex items-center justify-center text-[clamp(2.5rem,18vmin,5rem)] font-black transition-all duration-300
+              class="w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300
                 {cell === 0 && isMyTurn
                 ? 'hover:border-[var(--neon-cyan)] hover:border-2 cursor-pointer bg-[var(--cell)] shadow-lg'
                 : ''}
                 {cell === 0 && !isMyTurn ? 'cursor-default bg-[var(--cell)] shadow-lg' : ''}
               "
+              class:cell-symbol={cell !== 0}
               class:cell-x={cell === 1}
               class:cell-o={cell === 2}
               onclick={() => playMove(rIndex, cIndex)}
@@ -470,6 +471,23 @@
 </section>
 
 <style>
+  .cell-symbol {
+    font-size: clamp(2.5rem, 12vw, 4.5rem);
+    font-weight: 900;
+    font-family: 'Courier New', monospace;
+    line-height: 1;
+    text-shadow:
+      2px 0 0 currentColor,
+      -2px 0 0 currentColor,
+      0 2px 0 currentColor,
+      0 -2px 0 currentColor,
+      2px 2px 0 currentColor,
+      -2px -2px 0 currentColor,
+      2px -2px 0 currentColor,
+      -2px 2px 0 currentColor;
+    letter-spacing: 0.05em;
+  }
+
   .text-glow-magenta {
     text-shadow:
       0 0 10px var(--neon-magenta),
