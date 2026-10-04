@@ -14,6 +14,7 @@ interface PageSnapshot {
     search: string;
     searchParams: URLSearchParams;
   };
+  params: { id?: string };
 }
 
 const mocks = vi.hoisted(() => ({
@@ -27,7 +28,22 @@ const mocks = vi.hoisted(() => ({
   afterNavigateCallbacks: [] as Array<
     (navigation: { to: { url: { pathname: string } } | null }) => void
   >,
-  subscribers: [] as Array<(value: PageSnapshot) => void>
+  subscribers: [] as Array<(value: PageSnapshot) => void>,
+  gameplayConnected: false,
+  gameplayHandlers: new Map<string, (payload?: unknown) => void>(),
+  gameplayClient: {
+    state: {
+      subscribe: (fn: (value: string) => void) => {
+        fn(mocks.gameplayConnected ? 'connected' : 'disconnected');
+        return () => {};
+      }
+    },
+    on: vi.fn((event: string, handler: (payload?: unknown) => void) => {
+      mocks.gameplayHandlers.set(event, handler);
+      return () => mocks.gameplayHandlers.delete(event);
+    }),
+    send: vi.fn()
+  }
 }));
 
 const stubChild = (() => 'content') as unknown as Snippet;
@@ -41,7 +57,8 @@ function getPageSnapshot(): PageSnapshot {
       pathname: currentPath,
       search: currentSearch,
       searchParams: new URLSearchParams(currentSearch)
-    }
+    },
+    params: { id: currentPath.split('/')[2] }
   };
 }
 
@@ -116,6 +133,10 @@ vi.mock('$app/paths', () => ({
   resolve: mocks.resolve
 }));
 
+vi.mock('$lib/stores/ws', () => ({
+  globalGameplaysClient: { getOrCreate: () => mocks.gameplayClient }
+}));
+
 describe('layout auth guard', () => {
   beforeEach(() => {
     currentPath = '/lobby';
@@ -131,6 +152,10 @@ describe('layout auth guard', () => {
     mocks.play.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.unlock.mockReset();
+    mocks.gameplayConnected = false;
+    mocks.gameplayHandlers.clear();
+    mocks.gameplayClient.send.mockReset();
+    mocks.gameplayClient.on.mockClear();
   });
 
   afterEach(() => {
@@ -280,6 +305,30 @@ describe('layout auth guard', () => {
     expect(mocks.goto).toHaveBeenCalledWith('/lobby');
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+  });
+
+  it('sends leave_game and waits for game_ended before navigating back', async () => {
+    currentPath = '/lobby';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    mocks.gameplayConnected = true;
+    render(Layout, { props: { children: stubChild } });
+
+    publishNavigation('/lobby');
+    publishNavigation('/game/game-123');
+    await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
+    await fireEvent.click(screen.getByTestId('back-button'));
+
+    expect(mocks.gameplayClient.send).toHaveBeenCalledWith('leave_game', { game_id: 'game-123' });
+    expect(mocks.goto).not.toHaveBeenCalled();
+
+    mocks.gameplayHandlers.get('game_ended')?.({ game_id: 'game-123' });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
   });
 
   it('resets history on logout and allows back navigation after a fresh login', async () => {
