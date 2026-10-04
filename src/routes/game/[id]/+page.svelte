@@ -367,12 +367,12 @@
     <!-- Board -->
     <div class="flex justify-center relative">
       <div
-        class="grid grid-cols-3 grid-rows-3 gap-3 bg-[var(--text-muted)]/10 p-3 rounded-2xl w-[320px] h-[320px] sm:w-[400px] sm:h-[400px] shadow-2xl relative"
+        class="grid grid-cols-3 grid-rows-3 gap-3 bg-[var(--text-muted)]/10 p-3 rounded-2xl w-[min(90vw,400px)] aspect-square shadow-2xl relative"
       >
         {#each board as row, rIndex (rIndex)}
           {#each row as cell, cIndex (cIndex)}
             <button
-              class="w-full h-full rounded-2xl flex items-center justify-center text-7xl sm:text-8xl font-black transition-all duration-300
+              class="w-full h-full rounded-2xl flex items-center justify-center text-[clamp(2.5rem,18vmin,5rem)] font-black transition-all duration-300
                 {cell === 0 && isMyTurn
                 ? 'hover:border-[var(--neon-cyan)] hover:border-2 cursor-pointer bg-[var(--cell)] shadow-lg'
                 : ''}
