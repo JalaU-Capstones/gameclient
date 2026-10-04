@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { authApi } from '$lib/api/auth';
@@ -23,39 +24,45 @@
   let waitingForAccept = $state(false);
   let error = $state('');
   let presenceRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let latestPresenceList = 0;
+  let accessToken = '';
+  let handleVisibilityChange: (() => void) | undefined;
 
   onMount(async () => {
     try {
       const { access_token } = await authApi.refresh();
+      accessToken = access_token;
 
       presenceClient = globalPresenceClient.getOrCreate();
       gameplaysClient = globalGameplaysClient.getOrCreate();
 
-      unsubscribers.push(
-        presenceClient.on('auth_ok', () => {
-          presenceClient.send('list_online_users');
-        })
-      );
-
-      async function fetchUsers(userIds: string[]) {
-        const promises = userIds.map(async (id) => {
-          const existing = onlineUsers.find((u) => u.id === id);
-          if (existing) return existing;
-          try {
-            return await httpClient.get<User>(`/api/v2/users/${id}`);
-          } catch {
-            return null;
-          }
-        });
-        const results = await Promise.all(promises);
-        onlineUsers = results.filter((u) => u !== null) as User[];
+      async function fetchUsers(userIds: string[]): Promise<User[]> {
+        const uniqueIds = [...new Set(userIds)];
+        const results = await Promise.allSettled(
+          uniqueIds.map((id) => httpClient.get<User>(`/api/v2/users/${id}`))
+        );
+        return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
       }
 
       unsubscribers.push(
         presenceClient.on('online_users', (payload: { users: string[] }) => {
-          fetchUsers(payload.users || []);
+          const requestId = ++latestPresenceList;
+          void fetchUsers(payload.users || []).then((users) => {
+            if (requestId === latestPresenceList) onlineUsers = users;
+          });
         })
       );
+
+      const connectionState = get(presenceClient.state);
+      if (connectionState === 'connected') {
+        presenceClient.send('list_online_users');
+      } else {
+        unsubscribers.push(
+          presenceClient.on('auth_ok', () => {
+            presenceClient.send('list_online_users');
+          })
+        );
+      }
 
       unsubscribers.push(
         presenceClient.on('user_online', () => {
@@ -111,6 +118,16 @@
 
       presenceClient.connect(access_token);
       gameplaysClient.connect(access_token);
+      handleVisibilityChange = () => {
+        if (document.visibilityState !== 'visible') return;
+        const connectionState = get(presenceClient.state);
+        if (connectionState === 'connected') {
+          presenceClient.send('list_online_users');
+        } else if (connectionState === 'disconnected') {
+          presenceClient.connect(accessToken);
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     } catch (e) {
       if (e instanceof ApiError && e.isUnauthorized) {
         error = 'Unauthorized. Please log in again.';
@@ -123,6 +140,9 @@
   onDestroy(() => {
     unsubscribers.forEach((unsub) => unsub());
     if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
+    if (handleVisibilityChange) {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
   });
 
   function schedulePresenceRefresh() {
@@ -130,7 +150,7 @@
     presenceRefreshTimer = setTimeout(() => {
       presenceClient?.send('list_online_users');
       presenceRefreshTimer = undefined;
-    }, 500);
+    }, 300);
   }
 
   function handleInvite(userId: string) {

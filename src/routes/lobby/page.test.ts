@@ -8,6 +8,7 @@ import LobbyPage from './+page.svelte';
 const mocks = vi.hoisted(() => {
   const presenceHandlers = new Map<string, (payload?: never) => void>();
   const gameplayHandlers = new Map<string, (payload?: never) => void>();
+  let presenceState = 'disconnected';
   return {
     refresh: vi.fn(),
     get: vi.fn(),
@@ -15,7 +16,16 @@ const mocks = vi.hoisted(() => {
     presenceHandlers,
     gameplayHandlers,
     play: vi.fn(),
+    setPresenceState: (state: string) => {
+      presenceState = state;
+    },
     presenceClient: {
+      state: {
+        subscribe: (subscriber: (state: string) => void) => {
+          subscriber(presenceState);
+          return () => {};
+        }
+      },
       on: vi.fn((event: string, handler: (payload?: never) => void) => {
         presenceHandlers.set(event, handler);
         return () => presenceHandlers.delete(event);
@@ -65,6 +75,7 @@ describe('Lobby page', () => {
   beforeEach(() => {
     session.reset();
     session.setUser(ada);
+    mocks.setPresenceState('disconnected');
     mocks.refresh.mockReset().mockResolvedValue({ access_token: 'token' });
     mocks.get.mockReset().mockImplementation(async (path: string) => {
       if (path.endsWith('/bob')) return bob;
@@ -77,6 +88,8 @@ describe('Lobby page', () => {
     mocks.gameplayClient.send.mockReset();
     mocks.presenceClient.connect.mockReset();
     mocks.gameplayClient.connect.mockReset();
+    mocks.presenceClient.on.mockClear();
+    mocks.gameplayClient.on.mockClear();
     mocks.play.mockReset();
   });
 
@@ -85,6 +98,20 @@ describe('Lobby page', () => {
 
     expect(await screen.findByText('Waiting for challengers...')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
+  });
+
+  it('requests the current online users immediately when mounting with an active connection', async () => {
+    mocks.setPresenceState('connected');
+
+    render(LobbyPage);
+
+    await waitFor(() =>
+      expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users')
+    );
+    expect(mocks.presenceClient.on).not.toHaveBeenCalledWith('auth_ok', expect.any(Function));
+
+    emit(mocks.presenceHandlers, 'online_users', { users: ['ada', 'bob'] });
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
   });
 
   it('renders another online player with an Invite button', async () => {
@@ -101,10 +128,93 @@ describe('Lobby page', () => {
     render(LobbyPage);
     await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalled());
 
+    emit(mocks.presenceHandlers, 'auth_ok');
+    expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users');
+    mocks.presenceClient.send.mockClear();
+
     emit(mocks.presenceHandlers, 'user_online');
-    await new Promise((resolve) => setTimeout(resolve, 550));
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users');
+  });
+
+  it('refreshes after user_online and shows the newly online user', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalled());
+
+    emit(mocks.presenceHandlers, 'user_online');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    emit(mocks.presenceHandlers, 'online_users', { users: ['ada', 'bob'] });
+
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+  });
+
+  it('removes offline users by replacing the displayed list with the server list', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalled());
+    emit(mocks.presenceHandlers, 'online_users', { users: ['ada', 'bob'] });
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+
+    emit(mocks.presenceHandlers, 'user_offline');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    emit(mocks.presenceHandlers, 'online_users', { users: ['ada'] });
+
+    await waitFor(() => expect(screen.queryByText('Bob')).not.toBeInTheDocument());
+    expect(screen.getByText('Waiting for challengers...')).toBeInTheDocument();
+  });
+
+  it('debounces rapid presence events into one list request', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalled());
+
+    emit(mocks.presenceHandlers, 'user_online');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    emit(mocks.presenceHandlers, 'user_offline');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    emit(mocks.presenceHandlers, 'user_online');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(
+      mocks.presenceClient.send.mock.calls.filter(([event]) => event === 'list_online_users')
+    ).toHaveLength(1);
+  });
+
+  it('refreshes the list when the tab becomes visible and reconnects if disconnected', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalledWith('token'));
+
+    const previousVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible'
+    });
+    mocks.setPresenceState('connected');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users');
+
+    mocks.presenceClient.connect.mockClear();
+    mocks.setPresenceState('disconnected');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mocks.presenceClient.connect).toHaveBeenCalledWith('token');
+
+    if (previousVisibility) {
+      Object.defineProperty(document, 'visibilityState', previousVisibility);
+    } else {
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
+  it('always fetches fresh unique user data and replaces stale entries', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceClient.connect).toHaveBeenCalled());
+    mocks.get.mockResolvedValueOnce(bob).mockResolvedValueOnce({ ...bob, name: 'Robert' });
+
+    emit(mocks.presenceHandlers, 'online_users', { users: ['bob', 'bob'] });
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+
+    emit(mocks.presenceHandlers, 'online_users', { users: ['bob'] });
+    expect(await screen.findByText('Robert')).toBeInTheDocument();
+    expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/bob'))).toHaveLength(2);
   });
 
   it('sends an invitation and shows the waiting state', async () => {
