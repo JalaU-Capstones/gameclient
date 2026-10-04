@@ -4,15 +4,18 @@
   import { resolve } from '$app/paths';
   import { authApi } from '$lib/api/auth';
   import { httpClient } from '$lib/api/client';
-  import { createPresenceClient, createGameplaysClient } from '$lib/api/ws';
+  import { globalPresenceClient, globalGameplaysClient } from '$lib/stores/ws';
+  import type { WebSocketClient } from '$lib/api/ws';
   import { sounds } from '$lib/audio/sounds';
   import { currentUser } from '$lib/stores/session';
   import { ApiError } from '$lib/api/errors';
   import type { User } from '$lib/types/api';
 
   let onlineUsers = $state<User[]>([]);
-  let presenceClient = $state<ReturnType<typeof createPresenceClient> | null>(null);
-  let gameplaysClient = $state<ReturnType<typeof createGameplaysClient> | null>(null);
+
+  let presenceClient: WebSocketClient;
+  let gameplaysClient: WebSocketClient;
+  let unsubscribers: (() => void)[] = [];
 
   // incoming invitation state
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
@@ -24,12 +27,14 @@
     try {
       const { access_token } = await authApi.refresh();
 
-      presenceClient = createPresenceClient();
-      gameplaysClient = createGameplaysClient();
+      presenceClient = globalPresenceClient.getOrCreate();
+      gameplaysClient = globalGameplaysClient.getOrCreate();
 
-      presenceClient.on('auth_ok', () => {
-        presenceClient?.send('list_online_users');
-      });
+      unsubscribers.push(
+        presenceClient.on('auth_ok', () => {
+          presenceClient.send('list_online_users');
+        })
+      );
 
       async function fetchUsers(userIds: string[]) {
         const promises = userIds.map(async (id) => {
@@ -45,47 +50,63 @@
         onlineUsers = results.filter((u) => u !== null) as User[];
       }
 
-      presenceClient.on('online_users', (payload: { users: string[] }) => {
-        fetchUsers(payload.users || []);
-      });
-
-      presenceClient.on('user_online', () => {
-        presenceClient?.send('list_online_users');
-      });
-
-      presenceClient.on('user_offline', () => {
-        presenceClient?.send('list_online_users');
-      });
-
-      // Gameplays Events
-      gameplaysClient.on(
-        'invitation_received',
-        (payload: { game_id: string; host: { id: string; name: string } }) => {
-          sounds.play('click');
-          incomingInvite = payload;
-        }
+      unsubscribers.push(
+        presenceClient.on('online_users', (payload: { users: string[] }) => {
+          fetchUsers(payload.users || []);
+        })
       );
 
-      gameplaysClient.on('game_created', () => {
-        // Wait for guest to accept. The host will be redirected when invitation_accepted fires.
-      });
+      unsubscribers.push(
+        presenceClient.on('user_online', () => {
+          presenceClient.send('list_online_users');
+        })
+      );
 
-      gameplaysClient.on('invitation_accepted', (payload: { game_id: string }) => {
-        waitingForAccept = false;
-        goto(resolve(`/game/${payload.game_id}`));
-      });
+      unsubscribers.push(
+        presenceClient.on('user_offline', () => {
+          presenceClient.send('list_online_users');
+        })
+      );
 
-      gameplaysClient.on('invitation_rejected', () => {
-        waitingForAccept = false;
-        error = 'Invitation was rejected.';
-        setTimeout(() => (error = ''), 3000);
-      });
+      // Gameplays Events
+      unsubscribers.push(
+        gameplaysClient.on(
+          'invitation_received',
+          (payload: { game_id: string; host: { id: string; name: string } }) => {
+            sounds.play('click');
+            incomingInvite = payload;
+          }
+        )
+      );
 
-      gameplaysClient.on('error', (payload: { message?: string }) => {
-        waitingForAccept = false;
-        error = payload.message || 'An error occurred';
-        setTimeout(() => (error = ''), 3000);
-      });
+      unsubscribers.push(
+        gameplaysClient.on('game_created', () => {
+          // Wait for guest to accept. The host will be redirected when invitation_accepted fires.
+        })
+      );
+
+      unsubscribers.push(
+        gameplaysClient.on('invitation_accepted', (payload: { game_id: string }) => {
+          waitingForAccept = false;
+          goto(resolve(`/game/${payload.game_id}`));
+        })
+      );
+
+      unsubscribers.push(
+        gameplaysClient.on('invitation_rejected', () => {
+          waitingForAccept = false;
+          error = 'Invitation was rejected.';
+          setTimeout(() => (error = ''), 3000);
+        })
+      );
+
+      unsubscribers.push(
+        gameplaysClient.on('error', (payload: { message?: string }) => {
+          waitingForAccept = false;
+          error = payload.message || 'An error occurred';
+          setTimeout(() => (error = ''), 3000);
+        })
+      );
 
       presenceClient.connect(access_token);
       gameplaysClient.connect(access_token);
@@ -99,27 +120,26 @@
   });
 
   onDestroy(() => {
-    presenceClient?.disconnect();
-    gameplaysClient?.disconnect();
+    unsubscribers.forEach((unsub) => unsub());
   });
 
   function handleInvite(userId: string) {
     sounds.play('click');
     waitingForAccept = true;
-    gameplaysClient?.send('create_game', { guest_id: userId });
+    gameplaysClient.send('create_game', { guest_id: userId });
   }
 
   function handleAccept() {
     if (!incomingInvite) return;
     sounds.play('click');
     isSubmitting = true;
-    gameplaysClient?.send('accept_invitation', { game_id: incomingInvite.game_id });
+    gameplaysClient.send('accept_invitation', { game_id: incomingInvite.game_id });
   }
 
   function handleReject() {
     if (!incomingInvite) return;
     sounds.play('click');
-    gameplaysClient?.send('reject_invitation', { game_id: incomingInvite.game_id });
+    gameplaysClient.send('reject_invitation', { game_id: incomingInvite.game_id });
     incomingInvite = null;
   }
 </script>
