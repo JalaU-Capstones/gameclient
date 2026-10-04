@@ -4,6 +4,7 @@ import { authApi } from '$lib/api/auth';
 import { sounds } from '$lib/audio/sounds';
 import { navigationHistory } from '$lib/navigation/history';
 import { session } from '$lib/stores/session';
+import { globalGameplaysClient, globalPresenceClient } from '$lib/stores/ws';
 
 /**
  * Perform a clean logout:
@@ -17,6 +18,17 @@ import { session } from '$lib/stores/session';
  */
 export async function performLogout(): Promise<void> {
   sounds.play('click');
+
+  try {
+    globalGameplaysClient.disconnect();
+  } catch (err) {
+    console.warn('[auth] gameplay WebSocket disconnect failed', err);
+  }
+  try {
+    globalPresenceClient.disconnect();
+  } catch (err) {
+    console.warn('[auth] presence WebSocket disconnect failed', err);
+  }
 
   try {
     await authApi.logout();
