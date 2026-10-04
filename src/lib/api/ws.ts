@@ -194,6 +194,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         shouldReconnect = true;
         setState('connected');
         startPingLoop();
+        dispatchToHandlers(parsed.event, parsed.payload);
         return;
       }
 
@@ -297,5 +298,9 @@ export function createGameplaysClient(): WebSocketClient {
 }
 
 export function createPresenceClient(): WebSocketClient {
-  return createWebSocketClient({ path: '/api/v2/ws/presence' });
+  return createWebSocketClient({
+    path: '/api/v2/ws/presence',
+    pingIntervalMs: 25_000,
+    maxReconnectAttempts: Number.POSITIVE_INFINITY
+  });
 }

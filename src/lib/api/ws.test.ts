@@ -11,7 +11,7 @@ vi.mock('$lib/config', () => ({
 
 import WS from 'vitest-websocket-mock';
 import { get } from 'svelte/store';
-import { createWebSocketClient } from './ws';
+import { createPresenceClient, createWebSocketClient } from './ws';
 
 describe('createWebSocketClient', () => {
   beforeEach(() => {
@@ -30,6 +30,8 @@ describe('createWebSocketClient', () => {
       authTimeoutMs: 250,
       pingIntervalMs: 500
     });
+    const authHandler = vi.fn();
+    client.on('auth_ok', authHandler);
 
     client.connect('token-123');
 
@@ -39,6 +41,7 @@ describe('createWebSocketClient', () => {
     server.send({ event: 'auth_ok', payload: { user_id: 'u1' } });
 
     await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
+    expect(authHandler).toHaveBeenCalledWith({ user_id: 'u1' });
   });
 
   it('closes with 4401 and does not reconnect on auth_error', async () => {
@@ -94,6 +97,29 @@ describe('createWebSocketClient', () => {
     client.send('game_message', { text: 'hello' });
 
     await expect(server).toReceiveMessage({ event: 'game_message', payload: { text: 'hello' } });
+  });
+
+  it('sends a presence heartbeat every 25 seconds', async () => {
+    const server = new WS('ws://localhost:3000/api/v2/ws/presence', { jsonProtocol: true });
+    const client = createPresenceClient();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    client.connect('token-presence');
+    await server.connected;
+    await expect(server).toReceiveMessage({
+      event: 'auth',
+      payload: { token: 'token-presence' }
+    });
+    server.send({ event: 'auth_ok', payload: { user_id: 'u-presence' } });
+    await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
+
+    const heartbeat = setIntervalSpy.mock.calls.find(([, interval]) => interval === 25_000)?.[0];
+    expect(heartbeat).toBeTypeOf('function');
+    if (typeof heartbeat === 'function') heartbeat();
+
+    await expect(server).toReceiveMessage({ event: 'ping', payload: {} });
+    client.disconnect();
+    setIntervalSpy.mockRestore();
   });
 
   it('ignores send calls on disconnected sockets', () => {
