@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { afterNavigate, goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import type { Pathname } from '$app/types';
@@ -9,6 +10,7 @@
   import { sounds } from '$lib/audio/sounds';
   import { performLogout } from '$lib/auth/logout';
   import { navigationHistory } from '$lib/navigation/history';
+  import { globalGameplaysClient } from '$lib/stores/ws';
   import { resolveRedirect } from '$lib/auth/redirect';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -19,6 +21,7 @@
   const PUBLIC_ROUTES = ['/login', '/register'];
 
   let { children } = $props();
+  let isLeavingGame = $state(false);
   let isPublicRoute = $derived(PUBLIC_ROUTES.includes($page.url.pathname));
   let canGoBack = $derived($navigationHistory.length >= 2 && navigationHistory.canGoBack());
 
@@ -28,12 +31,50 @@
     }
   });
 
-  function handleBack() {
+  async function handleBack() {
+    if (isLeavingGame) return;
     sounds.play('click');
     const target = navigationHistory.back();
-    if (target) {
-      goto(resolve(target as Pathname));
+    if (!target) return;
+
+    if (/^\/game\//.test($page.url.pathname)) {
+      const gameId = $page.params.id;
+      if (gameId) {
+        isLeavingGame = true;
+        try {
+          const gameplaysClient = globalGameplaysClient.getOrCreate();
+          const isConnected = get(gameplaysClient.state) === 'connected';
+
+          if (isConnected) {
+            await new Promise<void>((resolveLeave) => {
+              let unsubscribe = () => {};
+              const timeout = setTimeout(finish, 1000);
+              function finish() {
+                clearTimeout(timeout);
+                unsubscribe();
+                resolveLeave();
+              }
+
+              unsubscribe = gameplaysClient.on(
+                'game_ended',
+                (payload: { game_id?: string } | undefined) => {
+                  if (payload?.game_id && payload.game_id !== gameId) return;
+                  finish();
+                }
+              );
+              gameplaysClient.send('leave_game', { game_id: gameId });
+            });
+          } else {
+            gameplaysClient.send('leave_game', { game_id: gameId });
+          }
+        } catch (err) {
+          console.warn('[game] failed to confirm leaving game', err);
+        }
+      }
     }
+
+    goto(resolve(target as Pathname));
+    isLeavingGame = false;
   }
 
   onMount(() => {
@@ -112,10 +153,11 @@
         <button
           type="button"
           onclick={handleBack}
-          class="rounded-full border border-[var(--neon-cyan)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-cyan)] transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] active:scale-95"
+          disabled={isLeavingGame}
+          class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
           data-testid="back-button"
         >
-          ← Back
+          {isLeavingGame ? 'Leaving...' : '← Back'}
         </button>
       {/if}
       {#if $isAuthenticated}
