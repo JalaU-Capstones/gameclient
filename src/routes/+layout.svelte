@@ -100,7 +100,7 @@
   <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
     <div class="flex flex-col">
       <GameTitle text="TIC TAC TOE" />
-      {#if $isAuthenticated && $currentUser}
+      {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
         <span class="text-[var(--neon-cyan)] text-xs uppercase tracking-widest mt-1 opacity-80">
           Welcome, {$currentUser.name}
         </span>
