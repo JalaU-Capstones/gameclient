@@ -13,6 +13,7 @@
   import type { User } from '$lib/types/api';
 
   let onlineUsers = $state<User[]>([]);
+  let isLoadingOnlineUsers = $state(true);
 
   let presenceClient: WebSocketClient;
   let gameplaysClient: WebSocketClient;
@@ -24,15 +25,25 @@
   let waitingForAccept = $state(false);
   let error = $state('');
   let presenceRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let fallbackRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let loadingTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
   let latestPresenceList = 0;
+  let hasReceivedPresenceList = false;
   let accessToken = '';
   let handleVisibilityChange: (() => void) | undefined;
+  let isLobbyMounted = false;
 
   onMount(async () => {
+    isLobbyMounted = true;
+    isLoadingOnlineUsers = true;
+    hasReceivedPresenceList = false;
     try {
       const { access_token } = await authApi.refresh();
+      if (!isLobbyMounted) return;
       accessToken = access_token;
 
+      globalPresenceClient.disconnect();
+      globalGameplaysClient.disconnect();
       presenceClient = globalPresenceClient.getOrCreate();
       gameplaysClient = globalGameplaysClient.getOrCreate();
 
@@ -45,24 +56,31 @@
       }
 
       unsubscribers.push(
-        presenceClient.on('online_users', (payload: { users: string[] }) => {
+        presenceClient.on('online_users', (payload: { users?: string[] } | undefined) => {
+          hasReceivedPresenceList = true;
+          if (fallbackRefreshTimer) {
+            clearTimeout(fallbackRefreshTimer);
+            fallbackRefreshTimer = undefined;
+          }
           const requestId = ++latestPresenceList;
-          void fetchUsers(payload.users || []).then((users) => {
-            if (requestId === latestPresenceList) onlineUsers = users;
+          void fetchUsers(payload?.users ?? []).then((users) => {
+            if (isLobbyMounted && requestId === latestPresenceList) {
+              onlineUsers = users;
+              isLoadingOnlineUsers = false;
+              if (loadingTimeoutTimer) {
+                clearTimeout(loadingTimeoutTimer);
+                loadingTimeoutTimer = undefined;
+              }
+            }
           });
         })
       );
 
-      const connectionState = get(presenceClient.state);
-      if (connectionState === 'connected') {
-        presenceClient.send('list_online_users');
-      } else {
-        unsubscribers.push(
-          presenceClient.on('auth_ok', () => {
-            presenceClient.send('list_online_users');
-          })
-        );
-      }
+      unsubscribers.push(
+        presenceClient.on('auth_ok', () => {
+          if (isLobbyMounted) presenceClient.send('list_online_users');
+        })
+      );
 
       unsubscribers.push(
         presenceClient.on('user_online', () => {
@@ -116,10 +134,26 @@
         })
       );
 
-      presenceClient.connect(access_token);
-      gameplaysClient.connect(access_token);
+      presenceClient.connect(accessToken);
+      gameplaysClient.connect(accessToken);
+      fallbackRefreshTimer = setTimeout(() => {
+        fallbackRefreshTimer = undefined;
+        if (!isLobbyMounted || !isLoadingOnlineUsers) return;
+
+        console.warn('[lobby] Fallback: requesting user list');
+        presenceClient.send('list_online_users');
+        loadingTimeoutTimer = setTimeout(() => {
+          loadingTimeoutTimer = undefined;
+          if (isLobbyMounted && isLoadingOnlineUsers) {
+            if (!hasReceivedPresenceList) {
+              console.warn('[lobby] Timed out waiting for online players');
+            }
+            isLoadingOnlineUsers = false;
+          }
+        }, 1300);
+      }, 1200);
       handleVisibilityChange = () => {
-        if (document.visibilityState !== 'visible') return;
+        if (!isLobbyMounted || document.visibilityState !== 'visible') return;
         const connectionState = get(presenceClient.state);
         if (connectionState === 'connected') {
           presenceClient.send('list_online_users');
@@ -129,6 +163,7 @@
       };
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } catch (e) {
+      if (isLobbyMounted) isLoadingOnlineUsers = false;
       if (e instanceof ApiError && e.isUnauthorized) {
         error = '';
         session.clear();
@@ -139,8 +174,13 @@
   });
 
   onDestroy(() => {
+    isLobbyMounted = false;
     unsubscribers.forEach((unsub) => unsub());
+    globalPresenceClient.disconnect();
+    globalGameplaysClient.disconnect();
     if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
+    if (fallbackRefreshTimer) clearTimeout(fallbackRefreshTimer);
+    if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
     if (handleVisibilityChange) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
@@ -198,7 +238,9 @@
       <h3 class="text-2xl font-bold text-[var(--text-primary)]">Online Players</h3>
     </div>
 
-    {#if onlineUsers.length === 0 || (onlineUsers.length === 1 && onlineUsers[0].id === $currentUser?.id)}
+    {#if isLoadingOnlineUsers}
+      <p class="text-[var(--text-muted)] text-center py-8 text-xl">Loading players...</p>
+    {:else if onlineUsers.length === 0}
       <p class="text-[var(--text-muted)] text-center py-8 text-xl">Waiting for challengers...</p>
     {:else}
       <ul class="space-y-4">
@@ -217,6 +259,11 @@
             </li>
           {/if}
         {/each}
+        {#if onlineUsers.every((user) => user.id === $currentUser?.id)}
+          <li class="text-[var(--text-muted)] text-center py-4 text-lg">
+            You are the only player online.
+          </li>
+        {/if}
       </ul>
     {/if}
   </div>
