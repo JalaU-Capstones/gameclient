@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { Snippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { navigationHistory } from '$lib/navigation/history';
+import { ApiError } from '$lib/api/errors';
 import Layout from './+layout.svelte';
 import LoginLayoutHarness from '../tests/harnesses/LoginLayoutHarness.svelte';
 import { session } from '$lib/stores/session';
@@ -182,11 +183,23 @@ describe('layout auth guard', () => {
   });
 
   it('clears the session and redirects to /login when /auth/me returns 401', async () => {
-    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mocks.get.mockRejectedValue(new ApiError('Unauthorized', 401));
 
     render(Layout, { props: { children: stubChild } });
 
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login?redirect=%2Flobby'));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('unlocks audio on the first pointer or keyboard interaction only once', async () => {
+    mocks.get.mockRejectedValue(new ApiError('Unauthorized', 401));
+    render(Layout, { props: { children: stubChild } });
+
+    fireEvent.pointerDown(window);
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    await waitFor(() => expect(mocks.unlock).toHaveBeenCalledOnce());
   });
 
   it('preserves the intended destination when redirecting an unauthenticated user', async () => {

@@ -78,7 +78,13 @@
   }
 
   onMount(() => {
-    const unlock = () => void sounds.unlock();
+    const unlock = () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      void Promise.resolve(sounds.unlock()).catch((err: unknown) => {
+        console.warn('[audio] failed to unlock audio', err);
+      });
+    };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     return () => {
@@ -95,12 +101,10 @@
       const user = await httpClient.get<User>('/api/v2/auth/me');
       session.setUser(user);
     } catch (err) {
-      if (err instanceof ApiError && err.isUnauthorized) {
-        session.clear();
-      } else {
+      if (!(err instanceof ApiError && err.isUnauthorized)) {
         console.warn('[auth] session hydration failed', err);
-        session.clear();
       }
+      session.clear();
     } finally {
       session.setLoading(false);
     }
