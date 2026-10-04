@@ -22,6 +22,7 @@
   let isSubmitting = $state(false);
   let waitingForAccept = $state(false);
   let error = $state('');
+  let presenceRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   onMount(async () => {
     try {
@@ -58,13 +59,13 @@
 
       unsubscribers.push(
         presenceClient.on('user_online', () => {
-          presenceClient.send('list_online_users');
+          schedulePresenceRefresh();
         })
       );
 
       unsubscribers.push(
         presenceClient.on('user_offline', () => {
-          presenceClient.send('list_online_users');
+          schedulePresenceRefresh();
         })
       );
 
@@ -121,7 +122,16 @@
 
   onDestroy(() => {
     unsubscribers.forEach((unsub) => unsub());
+    if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
   });
+
+  function schedulePresenceRefresh() {
+    if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
+    presenceRefreshTimer = setTimeout(() => {
+      presenceClient?.send('list_online_users');
+      presenceRefreshTimer = undefined;
+    }, 500);
+  }
 
   function handleInvite(userId: string) {
     sounds.play('click');
@@ -141,6 +151,9 @@
     sounds.play('click');
     gameplaysClient.send('reject_invitation', { game_id: incomingInvite.game_id });
     incomingInvite = null;
+    isSubmitting = false;
+    error = 'Invitation declined.';
+    setTimeout(() => (error = ''), 3000);
   }
 </script>
 
@@ -162,12 +175,6 @@
   >
     <div class="flex items-center justify-between mb-6 border-b border-[var(--neon-cyan)] pb-2">
       <h3 class="text-2xl font-bold text-[var(--text-primary)]">Online Players</h3>
-      <button
-        onclick={() => presenceClient?.send('list_online_users')}
-        class="text-xs uppercase tracking-widest text-[var(--neon-cyan)] hover:text-[var(--neon-magenta)] transition"
-      >
-        Refresh
-      </button>
     </div>
 
     {#if onlineUsers.length === 0 || (onlineUsers.length === 1 && onlineUsers[0].id === $currentUser?.id)}
