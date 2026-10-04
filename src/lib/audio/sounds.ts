@@ -25,15 +25,27 @@ export class AudioService {
     if (this.unlocking) return this.unlocking;
 
     this.unlocking = (async () => {
-      const Context = window.AudioContext ?? (window as ExtendedWindow).webkitAudioContext;
-      if (!Context) return;
+      try {
+        const Context = window.AudioContext ?? (window as ExtendedWindow).webkitAudioContext;
+        if (!Context) return;
 
-      this.context = new Context();
-      if (this.context.state === 'suspended') {
-        await this.context.resume();
+        this.context ??= new Context();
+        if (this.context.state !== 'running') {
+          await this.context.resume();
+        }
+        if (this.context.state !== 'running') return;
+
+        this.unlocked = true;
+        await this.preload();
+      } catch (error) {
+        this.unlocked = false;
+        if (
+          (error instanceof DOMException || error instanceof Error) &&
+          error.name === 'NotAllowedError'
+        )
+          return;
+        throw error;
       }
-      this.unlocked = true;
-      await this.preload();
     })().finally(() => {
       this.unlocking = null;
     });
@@ -63,7 +75,14 @@ export class AudioService {
   }
 
   play(name: SoundName): void {
-    if (!browser || !this.context || this.muted) return;
+    if (
+      !browser ||
+      !this.unlocked ||
+      !this.context ||
+      this.context.state !== 'running' ||
+      this.muted
+    )
+      return;
     const buffer = this.buffers.get(name);
     if (!buffer) return;
 

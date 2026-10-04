@@ -9,11 +9,17 @@ class FakeAudioBufferSource {
 
 class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
+  static resumeRejection: DOMException | null = null;
 
   state: AudioContextState = 'suspended';
   destination = {} as AudioNode;
   sources: FakeAudioBufferSource[] = [];
   resume = vi.fn(async () => {
+    if (FakeAudioContext.resumeRejection) {
+      const rejection = FakeAudioContext.resumeRejection;
+      FakeAudioContext.resumeRejection = null;
+      throw rejection;
+    }
     this.state = 'running';
   });
   decodeAudioData = vi.fn(
@@ -36,6 +42,7 @@ describe('AudioService', () => {
 
   beforeEach(() => {
     FakeAudioContext.instances = [];
+    FakeAudioContext.resumeRejection = null;
     service = new AudioService();
     fetchMock = vi.fn(async () => ({
       ok: true,
@@ -97,9 +104,36 @@ describe('AudioService', () => {
   });
 
   it('does nothing when played before unlock', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
     service.play('click');
 
     expect(FakeAudioContext.instances).toHaveLength(0);
+    expect(warning).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('plays sounds after a user gesture unlocks the audio context', async () => {
+    await service.unlock();
+
+    service.play('click');
+
+    expect(service.isUnlocked()).toBe(true);
+    expect(FakeAudioContext.instances[0].createBufferSource).toHaveBeenCalledOnce();
+  });
+
+  it('silently allows a later user gesture to retry after autoplay blocks resume', async () => {
+    FakeAudioContext.resumeRejection = new DOMException(
+      'Autoplay is not allowed',
+      'NotAllowedError'
+    );
+
+    await expect(service.unlock()).resolves.toBeUndefined();
+    expect(service.isUnlocked()).toBe(false);
+
+    await service.unlock();
+    expect(service.isUnlocked()).toBe(true);
   });
 
   it('does nothing when an unknown sound is requested', async () => {
