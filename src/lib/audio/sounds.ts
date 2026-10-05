@@ -17,6 +17,7 @@ export class AudioService {
   private buffers = new Map<SoundName, AudioBuffer>();
   private loading: Promise<void> | null = null;
   private unlocking: Promise<void> | null = null;
+  private pendingSounds: SoundName[] = [];
   private unlocked = false;
   private muted = false;
 
@@ -26,6 +27,7 @@ export class AudioService {
 
     this.unlocking = (async () => {
       try {
+        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
         const Context = window.AudioContext ?? (window as ExtendedWindow).webkitAudioContext;
         if (!Context) return;
 
@@ -37,6 +39,7 @@ export class AudioService {
 
         this.unlocked = true;
         await this.preload();
+        this.flushPendingSounds();
       } catch (error) {
         this.unlocked = false;
         if (
@@ -75,14 +78,16 @@ export class AudioService {
   }
 
   play(name: SoundName): void {
-    if (
-      !browser ||
-      !this.unlocked ||
-      !this.context ||
-      this.context.state !== 'running' ||
-      this.muted
-    )
+    if (!browser || this.muted) return;
+    if (!this.unlocked) {
+      if (this.pendingSounds.length < 16) this.pendingSounds.push(name);
       return;
+    }
+    this.playLoaded(name);
+  }
+
+  private playLoaded(name: SoundName): void {
+    if (!this.context || this.context.state !== 'running' || this.muted) return;
     const buffer = this.buffers.get(name);
     if (!buffer) return;
 
@@ -90,6 +95,11 @@ export class AudioService {
     source.buffer = buffer;
     source.connect(this.context.destination);
     source.start(0);
+  }
+
+  private flushPendingSounds(): void {
+    const pending = this.pendingSounds.splice(0);
+    pending.forEach((name) => this.playLoaded(name));
   }
 
   setMuted(muted: boolean): void {

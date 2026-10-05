@@ -103,13 +103,16 @@ describe('AudioService', () => {
     expect(context.sources[0].start).toHaveBeenCalledWith(0);
   });
 
-  it('does nothing when played before unlock', () => {
+  it('queues pre-gesture sounds and flushes them exactly once after unlock', async () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     service.play('click');
+    await service.unlock();
+    await service.unlock();
 
-    expect(FakeAudioContext.instances).toHaveLength(0);
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(FakeAudioContext.instances[0].createBufferSource).toHaveBeenCalledOnce();
     expect(warning).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
   });
