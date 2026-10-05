@@ -1,216 +1,243 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { authApi } from '$lib/api/auth';
   import { httpClient } from '$lib/api/client';
-  import { globalPresenceClient, globalGameplaysClient } from '$lib/stores/ws';
-  import type { WebSocketClient } from '$lib/api/ws';
+  import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
+  import { bootstrapSession, handleAuthFailure } from '$lib/auth/bootstrap';
+  import {
+    announcePresenceListRequest,
+    createTabId,
+    subscribeSessionMessages
+  } from '$lib/auth/sessionLock';
+  import { userFacingMessage } from '$lib/errors/messages';
   import { sounds } from '$lib/audio/sounds';
-  import { currentUser, session } from '$lib/stores/session';
-  import { ApiError } from '$lib/api/errors';
+  import {
+    globalGameplaysClient,
+    globalPresenceClient,
+    requestPresenceReconnect
+  } from '$lib/stores/ws';
+  import { currentUser } from '$lib/stores/session';
+  import type { WebSocketClient } from '$lib/api/ws';
   import type { User } from '$lib/types/api';
 
   let onlineUsers = $state<User[]>([]);
   let isLoadingOnlineUsers = $state(true);
-
-  let presenceClient: WebSocketClient;
-  let gameplaysClient: WebSocketClient;
-  let unsubscribers: (() => void)[] = [];
-
-  // incoming invitation state
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
   let isSubmitting = $state(false);
   let waitingForAccept = $state(false);
   let error = $state('');
-  let presenceRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let presenceClient: WebSocketClient;
+  let gameplaysClient: WebSocketClient | undefined;
+  let unsubscribers: (() => void)[] = [];
   let fallbackRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   let loadingTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
-  let latestPresenceList = 0;
-  let hasReceivedPresenceList = false;
-  let accessToken = '';
-  let handleVisibilityChange: (() => void) | undefined;
   let isLobbyMounted = false;
+  let latestPresenceList = 0;
+  const tabId = createTabId();
+  let authRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let authRetryUsed = false;
 
-  onMount(async () => {
-    isLobbyMounted = true;
-    isLoadingOnlineUsers = true;
-    hasReceivedPresenceList = false;
-    try {
-      const { access_token } = await authApi.refresh();
-      if (!isLobbyMounted) return;
-      accessToken = access_token;
-
-      globalPresenceClient.disconnect();
-      globalGameplaysClient.disconnect();
-      presenceClient = globalPresenceClient.getOrCreate();
-      gameplaysClient = globalGameplaysClient.getOrCreate();
-
-      async function fetchUsers(userIds: string[]): Promise<User[]> {
-        const uniqueIds = [...new Set(userIds)];
-        const results = await Promise.allSettled(
-          uniqueIds.map((id) => httpClient.get<User>(`/api/v2/users/${id}`))
-        );
-        return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
-      }
-
-      unsubscribers.push(
-        presenceClient.on('online_users', (payload: { users?: string[] } | undefined) => {
-          hasReceivedPresenceList = true;
-          if (fallbackRefreshTimer) {
-            clearTimeout(fallbackRefreshTimer);
-            fallbackRefreshTimer = undefined;
-          }
-          const requestId = ++latestPresenceList;
-          void fetchUsers(payload?.users ?? []).then((users) => {
-            if (isLobbyMounted && requestId === latestPresenceList) {
-              onlineUsers = users;
-              isLoadingOnlineUsers = false;
-              if (loadingTimeoutTimer) {
-                clearTimeout(loadingTimeoutTimer);
-                loadingTimeoutTimer = undefined;
-              }
-            }
-          });
-        })
-      );
-
-      unsubscribers.push(
-        presenceClient.on('auth_ok', () => {
-          if (isLobbyMounted) presenceClient.send('list_online_users');
-        })
-      );
-
-      unsubscribers.push(
-        presenceClient.on('user_online', () => {
-          schedulePresenceRefresh();
-        })
-      );
-
-      unsubscribers.push(
-        presenceClient.on('user_offline', () => {
-          schedulePresenceRefresh();
-        })
-      );
-
-      // Gameplays Events
-      unsubscribers.push(
-        gameplaysClient.on(
-          'invitation_received',
-          (payload: { game_id: string; host: { id: string; name: string } }) => {
-            sounds.play('click');
-            incomingInvite = payload;
-          }
-        )
-      );
-
-      unsubscribers.push(
-        gameplaysClient.on('game_created', () => {
-          // Wait for guest to accept. The host will be redirected when invitation_accepted fires.
-        })
-      );
-
-      unsubscribers.push(
-        gameplaysClient.on('invitation_accepted', (payload: { game_id: string }) => {
-          waitingForAccept = false;
-          goto(resolve(`/game/${payload.game_id}`));
-        })
-      );
-
-      unsubscribers.push(
-        gameplaysClient.on('invitation_rejected', () => {
-          waitingForAccept = false;
-          error = 'Invitation was rejected.';
-          setTimeout(() => (error = ''), 3000);
-        })
-      );
-
-      unsubscribers.push(
-        gameplaysClient.on('error', (payload: { message?: string }) => {
-          waitingForAccept = false;
-          error = payload.message || 'An error occurred';
-          setTimeout(() => (error = ''), 3000);
-        })
-      );
-
-      presenceClient.connect(accessToken);
-      gameplaysClient.connect(accessToken);
-      fallbackRefreshTimer = setTimeout(() => {
-        fallbackRefreshTimer = undefined;
-        if (!isLobbyMounted || !isLoadingOnlineUsers) return;
-
-        console.warn('[lobby] Fallback: requesting user list');
-        presenceClient.send('list_online_users');
-        loadingTimeoutTimer = setTimeout(() => {
-          loadingTimeoutTimer = undefined;
-          if (isLobbyMounted && isLoadingOnlineUsers) {
-            if (!hasReceivedPresenceList) {
-              console.warn('[lobby] Timed out waiting for online players');
-            }
-            isLoadingOnlineUsers = false;
-          }
-        }, 1300);
-      }, 1200);
-      handleVisibilityChange = () => {
-        if (!isLobbyMounted || document.visibilityState !== 'visible') return;
-        const connectionState = get(presenceClient.state);
-        if (connectionState === 'connected') {
-          presenceClient.send('list_online_users');
-        } else if (connectionState === 'disconnected') {
-          presenceClient.connect(accessToken);
+  function handleGameplayAuthFailure(failure: unknown) {
+    handleAuthFailure(
+      failure,
+      (message) => {
+        error = message;
+        if (
+          (failure instanceof NetworkError || failure instanceof TimeoutError) &&
+          !authRetryUsed
+        ) {
+          authRetryUsed = true;
+          authRetryTimer = setTimeout(() => {
+            authRetryTimer = undefined;
+            void bootstrapSession(true)
+              .then(({ accessToken }) => {
+                if (!isLobbyMounted) return;
+                if (!accessToken)
+                  throw new Error('No access token is available for the gameplay connection');
+                gameplaysClient?.connect(accessToken);
+              })
+              .catch((retryFailure: unknown) => {
+                handleAuthFailure(retryFailure, (retryMessage) => (error = retryMessage), '/lobby');
+              });
+          }, 1200);
         }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-    } catch (e) {
-      if (isLobbyMounted) isLoadingOnlineUsers = false;
-      if (e instanceof ApiError && e.isUnauthorized) {
-        error = '';
-        session.clear();
-      } else {
-        error = 'Failed to connect to lobby.';
+      },
+      '/lobby'
+    );
+  }
+
+  onMount(() => {
+    isLoadingOnlineUsers = true;
+    isLobbyMounted = true;
+    if (import.meta.env.DEV) console.debug('[lobby] mount entry');
+
+    let receivedPresenceList = false;
+    loadingTimeoutTimer = setTimeout(() => {
+      loadingTimeoutTimer = undefined;
+      if (isLobbyMounted && isLoadingOnlineUsers) {
+        if (!receivedPresenceList) console.warn('[lobby] Timed out waiting for online players');
+        isLoadingOnlineUsers = false;
       }
+    }, 2500);
+    fallbackRefreshTimer = setTimeout(() => {
+      fallbackRefreshTimer = undefined;
+      if (!isLobbyMounted || !isLoadingOnlineUsers) return;
+      if (import.meta.env.DEV) console.debug('[lobby] fallback timer');
+      requestPresenceReconnect();
+      if (presenceClient.isAlive()) presenceClient.send('list_online_users');
+      else announcePresenceListRequest(tabId);
+    }, 1200);
+
+    presenceClient = globalPresenceClient.getOrCreate();
+    const requestOnlineUsers = () => presenceClient.send('list_online_users');
+
+    async function fetchUsers(userIds: string[]): Promise<User[]> {
+      const uniqueIds = [...new Set(userIds)];
+      const results = await Promise.allSettled(
+        uniqueIds.map((id) => httpClient.get<User>(`/api/v2/users/${id}`))
+      );
+      const users = results.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : []
+      );
+      if (import.meta.env.DEV) console.debug('[lobby] fetchUsers resolved', users.length);
+      return users;
     }
+
+    function processOnlineUsers(userIds: string[]) {
+      receivedPresenceList = true;
+      isLoadingOnlineUsers = false;
+      if (fallbackRefreshTimer) clearTimeout(fallbackRefreshTimer);
+      fallbackRefreshTimer = undefined;
+      if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
+      loadingTimeoutTimer = undefined;
+      const requestId = ++latestPresenceList;
+      void fetchUsers(userIds).then((users) => {
+        if (isLobbyMounted && requestId === latestPresenceList) onlineUsers = users;
+      });
+    }
+
+    unsubscribers.push(
+      presenceClient.on('online_users', (payload: { users?: string[] } | undefined) => {
+        if (import.meta.env.DEV) {
+          console.debug('[lobby] online_users received', payload?.users?.length ?? 0);
+        }
+        processOnlineUsers(payload?.users ?? []);
+      })
+    );
+    unsubscribers.push(
+      subscribeSessionMessages((message) => {
+        if (message.type === 'presence-users') processOnlineUsers(message.userIds);
+      })
+    );
+    unsubscribers.push(presenceClient.on('user_online', requestOnlineUsers));
+    unsubscribers.push(presenceClient.on('user_offline', requestOnlineUsers));
+    unsubscribers.push(
+      presenceClient.on('error', (payload: { code?: string; message?: string } | undefined) => {
+        error = userFacingMessage(payload?.code, 'Connection lost. Reconnecting…');
+      })
+    );
+    unsubscribers.push(
+      presenceClient.state.subscribe((state) => {
+        if (state === 'connected') requestOnlineUsers();
+      })
+    );
+    if (get(presenceClient.state) !== 'connected') requestPresenceReconnect();
+    else requestOnlineUsers();
+
+    void (async () => {
+      try {
+        if (import.meta.env.DEV) console.debug('[lobby] bootstrapping gameplay connection');
+        const { accessToken } = await bootstrapSession();
+        if (!isLobbyMounted) return;
+        if (!accessToken)
+          throw new Error('No access token is available for the gameplay connection');
+        gameplaysClient = globalGameplaysClient.getOrCreate();
+        unsubscribers.push(
+          gameplaysClient.on('auth_ok', () => {
+            authRetryUsed = false;
+            if (authRetryTimer) clearTimeout(authRetryTimer);
+            authRetryTimer = undefined;
+          })
+        );
+        unsubscribers.push(
+          gameplaysClient.on(
+            'invitation_received',
+            (payload: { game_id: string; host: { id: string; name: string } }) => {
+              sounds.play('click');
+              incomingInvite = payload;
+            }
+          )
+        );
+        unsubscribers.push(
+          gameplaysClient.on('invitation_accepted', (payload: { game_id: string }) => {
+            waitingForAccept = false;
+            goto(resolve(`/game/${payload.game_id}`));
+          })
+        );
+        unsubscribers.push(
+          gameplaysClient.on('invitation_rejected', () => {
+            waitingForAccept = false;
+            error = 'Invitation was rejected.';
+            setTimeout(() => (error = ''), 3000);
+          })
+        );
+        unsubscribers.push(
+          gameplaysClient.on(
+            'error',
+            (payload: { code?: string; message?: string } | undefined) => {
+              waitingForAccept = false;
+              error = userFacingMessage(payload?.code, 'Something went wrong. Please try again.');
+              setTimeout(() => (error = ''), 3000);
+            }
+          )
+        );
+        unsubscribers.push(
+          gameplaysClient.on(
+            'auth_failed',
+            (payload: { code?: number; reason?: string } | undefined) => {
+              const failure =
+                payload?.code === 4401 || payload?.reason === 'auth_error'
+                  ? new ApiError('Gameplay authentication failed', 401, 'AUTH_FAILED')
+                  : new TimeoutError('Gameplay authentication timed out');
+              handleGameplayAuthFailure(failure);
+            }
+          )
+        );
+        if (!gameplaysClient.isAlive()) gameplaysClient.connect(accessToken);
+      } catch (caught) {
+        handleAuthFailure(caught, (message) => (error = message), '/lobby');
+      }
+    })();
   });
 
   onDestroy(() => {
     isLobbyMounted = false;
-    unsubscribers.forEach((unsub) => unsub());
-    globalPresenceClient.disconnect();
-    globalGameplaysClient.disconnect();
-    if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
+    if (import.meta.env.DEV) console.debug('[lobby] destroy');
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
     if (fallbackRefreshTimer) clearTimeout(fallbackRefreshTimer);
     if (loadingTimeoutTimer) clearTimeout(loadingTimeoutTimer);
-    if (handleVisibilityChange) {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }
+    if (authRetryTimer) clearTimeout(authRetryTimer);
   });
-
-  function schedulePresenceRefresh() {
-    if (presenceRefreshTimer) clearTimeout(presenceRefreshTimer);
-    presenceRefreshTimer = setTimeout(() => {
-      presenceClient?.send('list_online_users');
-      presenceRefreshTimer = undefined;
-    }, 300);
-  }
 
   function handleInvite(userId: string) {
     sounds.play('click');
     waitingForAccept = true;
-    gameplaysClient.send('create_game', { guest_id: userId });
+    gameplaysClient?.send('create_game', { guest_id: userId });
   }
 
   function handleAccept() {
     if (!incomingInvite) return;
     sounds.play('click');
     isSubmitting = true;
-    gameplaysClient.send('accept_invitation', { game_id: incomingInvite.game_id });
+    gameplaysClient?.send('accept_invitation', { game_id: incomingInvite.game_id });
   }
 
   function handleReject() {
     if (!incomingInvite) return;
     sounds.play('click');
-    gameplaysClient.send('reject_invitation', { game_id: incomingInvite.game_id });
+    gameplaysClient?.send('reject_invitation', { game_id: incomingInvite.game_id });
     incomingInvite = null;
     isSubmitting = false;
     error = 'Invitation declined.';
