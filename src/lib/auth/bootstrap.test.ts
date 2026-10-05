@@ -141,6 +141,25 @@ describe('bootstrapSession', () => {
     expect(mocks.broadcastLogout).not.toHaveBeenCalled();
   });
 
+  it('aborts an in-flight refresh after the session cache is cleared', async () => {
+    let finishRefresh!: (value: { access_token: string }) => void;
+    mocks.refresh.mockReturnValue(
+      new Promise<{ access_token: string }>((resolve) => {
+        finishRefresh = resolve;
+      })
+    );
+    const pending = bootstrapSession();
+
+    await vi.waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
+    clearBootstrapSessionCache();
+    finishRefresh({ access_token: 'discarded-access-token' });
+
+    await expect(pending).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401
+    });
+  });
+
   it('waits for a recent refresh from another tab before refreshing without a local token', async () => {
     vi.useFakeTimers({ now: testTime });
     vi.spyOn(Date, 'now').mockRestore();
