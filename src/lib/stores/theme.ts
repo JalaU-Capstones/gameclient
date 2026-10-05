@@ -9,7 +9,8 @@ function createThemeStore() {
   const getInitialTheme = (): Theme => {
     if (!browser) return 'dark';
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    return stored === 'light' || stored === 'dark' ? stored : 'dark';
+    if (stored === 'light' || stored === 'dark') return stored;
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches === false ? 'light' : 'dark';
   };
 
   let currentTheme = getInitialTheme();

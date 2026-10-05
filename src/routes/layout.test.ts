@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { Snippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { navigationHistory } from '$lib/navigation/history';
+import { ApiError } from '$lib/api/errors';
 import Layout from './+layout.svelte';
 import LoginLayoutHarness from '../tests/harnesses/LoginLayoutHarness.svelte';
 import { session } from '$lib/stores/session';
@@ -14,6 +15,7 @@ interface PageSnapshot {
     search: string;
     searchParams: URLSearchParams;
   };
+  params: { id?: string };
 }
 
 const mocks = vi.hoisted(() => ({
@@ -27,7 +29,43 @@ const mocks = vi.hoisted(() => ({
   afterNavigateCallbacks: [] as Array<
     (navigation: { to: { url: { pathname: string } } | null }) => void
   >,
-  subscribers: [] as Array<(value: PageSnapshot) => void>
+  subscribers: [] as Array<(value: PageSnapshot) => void>,
+  gameplayConnected: false,
+  gameplayHandlers: new Map<string, (payload?: unknown) => void>(),
+  sessionMessageHandlers: new Set<(message: { type: string }) => void>(),
+  presenceHandlers: new Map<string, (payload?: unknown) => void>(),
+  presenceAlive: false,
+  presenceConnect: vi.fn(),
+  presenceSend: vi.fn(),
+  claimPresenceOwnership: vi.fn(),
+  claimGameplayOwnership: vi.fn(),
+  releaseGameplayOwnership: vi.fn(),
+  setPresenceReconnectRequest: vi.fn(),
+  requestPresenceReconnect: vi.fn(),
+  presenceReconnectRequest: null as (() => void) | null,
+  broadcastPresenceUsers: vi.fn(),
+  bootstrap: vi.fn(),
+  presenceDisconnect: vi.fn(),
+  gameplayDisconnect: vi.fn(),
+  gameplayClient: {
+    state: {
+      subscribe: (fn: (value: string) => void) => {
+        fn(mocks.gameplayConnected ? 'connected' : 'disconnected');
+        return () => {};
+      }
+    },
+    on: vi.fn((event: string, handler: (payload?: unknown) => void) => {
+      mocks.gameplayHandlers.set(event, handler);
+      return () => mocks.gameplayHandlers.delete(event);
+    }),
+    send: vi.fn()
+  },
+  presenceClient: {
+    isAlive: () => mocks.presenceAlive,
+    connect: vi.fn(),
+    send: vi.fn(),
+    on: vi.fn()
+  }
 }));
 
 const stubChild = (() => 'content') as unknown as Snippet;
@@ -41,7 +79,8 @@ function getPageSnapshot(): PageSnapshot {
       pathname: currentPath,
       search: currentSearch,
       searchParams: new URLSearchParams(currentSearch)
-    }
+    },
+    params: { id: currentPath.split('/')[2] }
   };
 }
 
@@ -91,6 +130,34 @@ vi.mock('$lib/api/client', () => ({
   }
 }));
 
+vi.mock('$lib/auth/bootstrap', async (importOriginal) => {
+  const original = await importOriginal<typeof import('$lib/auth/bootstrap')>();
+  return { ...original, bootstrapSession: mocks.bootstrap };
+});
+
+vi.mock('$lib/auth/sessionLock', () => ({
+  openSessionChannel: vi.fn(() => vi.fn()),
+  createTabId: vi.fn(() => 'tab-test'),
+  claimPresenceOwnership: mocks.claimPresenceOwnership,
+  claimGameplayOwnership: mocks.claimGameplayOwnership,
+  releasePresenceOwnership: vi.fn(),
+  releaseGameplayOwnership: mocks.releaseGameplayOwnership,
+  announcePresenceRelease: vi.fn(),
+  broadcastPresenceUsers: mocks.broadcastPresenceUsers,
+  broadcastLogout: vi.fn(),
+  onRemoteLogout: (handler: () => void) => {
+    const callback = (message: { type: string }) => {
+      if (message.type === 'logout') handler();
+    };
+    mocks.sessionMessageHandlers.add(callback);
+    return () => mocks.sessionMessageHandlers.delete(callback);
+  },
+  subscribeSessionMessages: (handler: (message: { type: string }) => void) => {
+    mocks.sessionMessageHandlers.add(handler);
+    return () => mocks.sessionMessageHandlers.delete(handler);
+  }
+}));
+
 vi.mock('$lib/api/auth', () => ({
   authApi: {
     login: mocks.login,
@@ -116,6 +183,20 @@ vi.mock('$app/paths', () => ({
   resolve: mocks.resolve
 }));
 
+vi.mock('$lib/stores/ws', () => ({
+  globalGameplaysClient: {
+    getOrCreate: () => mocks.gameplayClient,
+    disconnect: mocks.gameplayDisconnect
+  },
+  globalPresenceClient: {
+    getOrCreate: () => mocks.presenceClient,
+    disconnect: mocks.presenceDisconnect
+  },
+  requestPresenceReconnect: mocks.requestPresenceReconnect,
+  setLastPresenceToken: vi.fn(),
+  setPresenceReconnectRequest: mocks.setPresenceReconnectRequest
+}));
+
 describe('layout auth guard', () => {
   beforeEach(() => {
     currentPath = '/lobby';
@@ -131,13 +212,55 @@ describe('layout auth guard', () => {
     mocks.play.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.unlock.mockReset();
+    mocks.gameplayConnected = false;
+    mocks.gameplayHandlers.clear();
+    mocks.sessionMessageHandlers.clear();
+    mocks.gameplayClient.send.mockReset();
+    mocks.gameplayClient.on.mockClear();
+    mocks.bootstrap.mockReset().mockImplementation(async () => {
+      const user = await mocks.get('/api/v2/auth/me');
+      return { user, accessToken: 'access-token' };
+    });
+    mocks.presenceDisconnect.mockReset();
+    mocks.presenceDisconnect.mockImplementation(() => {
+      mocks.presenceAlive = false;
+    });
+    mocks.gameplayDisconnect.mockReset();
+    mocks.presenceHandlers.clear();
+    mocks.broadcastPresenceUsers.mockReset();
+    mocks.presenceClient.connect.mockReset().mockImplementation(() => {
+      mocks.presenceAlive = true;
+      mocks.presenceConnect();
+    });
+    mocks.presenceClient.on.mockReset().mockImplementation((event, handler) => {
+      mocks.presenceHandlers.set(event, handler);
+      return () => mocks.presenceHandlers.delete(event);
+    });
+    mocks.presenceClient.send.mockReset().mockImplementation((...args) => {
+      mocks.presenceSend(...args);
+    });
+    mocks.presenceConnect.mockReset().mockImplementation(() => {
+      mocks.presenceAlive = true;
+    });
+    mocks.presenceSend.mockReset();
+    mocks.presenceAlive = false;
+    mocks.claimPresenceOwnership.mockReset().mockResolvedValue(vi.fn());
+    mocks.claimGameplayOwnership.mockReset().mockResolvedValue(vi.fn());
+    mocks.releaseGameplayOwnership.mockReset();
+    mocks.presenceReconnectRequest = null;
+    mocks.requestPresenceReconnect.mockReset().mockImplementation(() => {
+      mocks.presenceReconnectRequest?.();
+    });
+    mocks.setPresenceReconnectRequest.mockReset().mockImplementation((request) => {
+      mocks.presenceReconnectRequest = request;
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('hydrates the session when /auth/me succeeds', async () => {
+  it('hydrates the session through the shared bootstrap helper', async () => {
     const user = {
       id: '1',
       name: 'Ada',
@@ -151,22 +274,87 @@ describe('layout auth guard', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(mocks.get).toHaveBeenCalledWith('/api/v2/auth/me');
+    expect(mocks.bootstrap).toHaveBeenCalledOnce();
     expect(session).toBeDefined();
     expect(mocks.goto).not.toHaveBeenCalled();
   });
 
+  it('owns presence in the layout and requests the online list after auth_ok', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    expect(mocks.claimPresenceOwnership).toHaveBeenCalledOnce();
+    mocks.presenceHandlers.get('auth_ok')?.();
+    expect(mocks.presenceSend).toHaveBeenCalledWith('list_online_users');
+    mocks.presenceHandlers.get('online_users')?.({ users: ['other-user'] });
+    expect(mocks.broadcastPresenceUsers).toHaveBeenCalledWith(['other-user']);
+
+    publishNavigation('/game/game-1');
+    expect(mocks.presenceDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('answers another tab presence-list-request while this tab owns presence', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceSend.mockReset();
+    mocks.sessionMessageHandlers.forEach((handler) => handler({ type: 'presence-list-request' }));
+
+    expect(mocks.presenceSend).toHaveBeenCalledWith('list_online_users');
+  });
+
+  it('reconnects the owned presence client when the visible tab has a dead socket', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceAlive = false;
+    fireEvent(document, new Event('visibilitychange'));
+
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledTimes(2));
+  });
+
   it('clears the session and redirects to /login when /auth/me returns 401', async () => {
-    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mocks.bootstrap.mockRejectedValue(new ApiError('Unauthorized', 401));
 
     render(Layout, { props: { children: stubChild } });
 
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login?redirect=%2Flobby'));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('unlocks audio on the first pointer or keyboard interaction only once', async () => {
+    mocks.bootstrap.mockRejectedValue(new ApiError('Unauthorized', 401));
+    render(Layout, { props: { children: stubChild } });
+
+    fireEvent.pointerDown(window);
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    await waitFor(() => expect(mocks.unlock).toHaveBeenCalledOnce());
   });
 
   it('preserves the intended destination when redirecting an unauthenticated user', async () => {
     currentPath = '/history';
-    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+    mocks.bootstrap.mockRejectedValue(new ApiError('Unauthorized', 401));
 
     render(Layout, { props: { children: stubChild } });
 
@@ -175,11 +363,26 @@ describe('layout auth guard', () => {
 
   it('redirects the root route to login without a return destination', async () => {
     currentPath = '/';
-    mocks.get.mockRejectedValue({ status: 401, isUnauthorized: true });
+    mocks.bootstrap.mockRejectedValue(new ApiError('Unauthorized', 401));
 
     render(Layout, { props: { children: stubChild } });
 
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login'));
+  });
+
+  it('redirects an authenticated user from the root route to the lobby', async () => {
+    currentPath = '/';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
+    expect(mocks.goto).not.toHaveBeenCalledWith('/login');
   });
 
   it.each([
@@ -225,11 +428,32 @@ describe('layout auth guard', () => {
     });
     render(Layout, { props: { children: stubChild } });
 
-    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v2/auth/me'));
+    await waitFor(() => expect(mocks.bootstrap).toHaveBeenCalledOnce());
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/history'));
     expect(screen.getByTestId('logout-button')).toBeInTheDocument();
   });
 
+  it('clears the session and redirects when another tab broadcasts logout', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    render(Layout, { props: { children: stubChild } });
+
+    mocks.sessionMessageHandlers.forEach((handler) => handler({ type: 'logout' }));
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login'));
+    expect(mocks.presenceDisconnect).toHaveBeenCalledOnce();
+    expect(mocks.gameplayDisconnect).toHaveBeenCalledOnce();
+    let currentUser: string | null = '1';
+    const unsubscribe = session.subscribe((state) => {
+      currentUser = state.user?.id ?? null;
+    });
+    unsubscribe();
+    expect(currentUser).toBeNull();
+  });
   it('renders the logout button while an authenticated user is on the login page', () => {
     currentPath = '/login';
     session.setUser({
@@ -280,6 +504,30 @@ describe('layout auth guard', () => {
     expect(mocks.goto).toHaveBeenCalledWith('/lobby');
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+  });
+
+  it('sends leave_game and waits for game_ended before navigating back', async () => {
+    currentPath = '/lobby';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    mocks.gameplayConnected = true;
+    render(Layout, { props: { children: stubChild } });
+
+    publishNavigation('/lobby');
+    publishNavigation('/game/game-123');
+    await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
+    await fireEvent.click(screen.getByTestId('back-button'));
+
+    expect(mocks.gameplayClient.send).toHaveBeenCalledWith('leave_game', { game_id: 'game-123' });
+    expect(mocks.goto).not.toHaveBeenCalled();
+
+    mocks.gameplayHandlers.get('game_ended')?.({ game_id: 'game-123' });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
   });
 
   it('resets history on logout and allows back navigation after a fresh login', async () => {

@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
   clear: vi.fn(),
   resetHistory: vi.fn(),
   goto: vi.fn(),
-  resolve: vi.fn((path: string) => path)
+  resolve: vi.fn((path: string) => path),
+  disconnectGameplays: vi.fn(),
+  disconnectPresence: vi.fn(),
+  broadcastLogout: vi.fn()
 }));
 
 vi.mock('$app/navigation', () => ({
@@ -41,6 +44,19 @@ vi.mock('$lib/stores/session', () => ({
   }
 }));
 
+vi.mock('$lib/stores/ws', () => ({
+  globalGameplaysClient: { disconnect: mocks.disconnectGameplays },
+  globalPresenceClient: { disconnect: mocks.disconnectPresence },
+  setLastPresenceToken: vi.fn()
+}));
+
+vi.mock('./sessionLock', () => ({
+  broadcastLogout: mocks.broadcastLogout,
+  acquireSessionLock: vi.fn(),
+  broadcastSessionRefreshed: vi.fn(),
+  getLastSessionRefreshAt: vi.fn()
+}));
+
 import { performLogout } from './logout';
 
 describe('performLogout', () => {
@@ -52,6 +68,9 @@ describe('performLogout', () => {
     mocks.goto.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.goto.mockResolvedValue(undefined);
+    mocks.disconnectGameplays.mockReset();
+    mocks.disconnectPresence.mockReset();
+    mocks.broadcastLogout.mockReset();
   });
 
   it('plays the click sound and logs the user out cleanly', async () => {
@@ -61,7 +80,16 @@ describe('performLogout', () => {
 
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(mocks.logout).toHaveBeenCalledTimes(1);
+    expect(mocks.disconnectGameplays).toHaveBeenCalledOnce();
+    expect(mocks.disconnectPresence).toHaveBeenCalledOnce();
+    expect(mocks.disconnectGameplays.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.logout.mock.invocationCallOrder[0]
+    );
+    expect(mocks.disconnectPresence.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.logout.mock.invocationCallOrder[0]
+    );
     expect(mocks.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastLogout).toHaveBeenCalledOnce();
     expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
   });
@@ -72,7 +100,29 @@ describe('performLogout', () => {
     await performLogout();
 
     expect(mocks.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastLogout).toHaveBeenCalledOnce();
+    expect(mocks.disconnectGameplays).toHaveBeenCalledOnce();
+    expect(mocks.disconnectPresence).toHaveBeenCalledOnce();
     expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
+  });
+
+  it('continues logout when both WebSocket disconnects throw', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mocks.disconnectGameplays.mockImplementation(() => {
+      throw new Error('gameplay disconnected');
+    });
+    mocks.disconnectPresence.mockImplementation(() => {
+      throw new Error('presence disconnected');
+    });
+    mocks.logout.mockRejectedValue(new Error('backend unavailable'));
+
+    await expect(performLogout()).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(mocks.clear).toHaveBeenCalledOnce();
+    expect(mocks.resetHistory).toHaveBeenCalledOnce();
+    expect(mocks.goto).toHaveBeenCalledWith('/login');
+    warn.mockRestore();
   });
 });

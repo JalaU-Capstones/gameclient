@@ -59,6 +59,14 @@ describe('createHttpClient', () => {
     expect(payload).toBeUndefined();
   });
 
+  it('returns undefined for an empty response body', async () => {
+    server.use(
+      http.get('*/api/empty', () => new HttpResponse(null, { headers: { 'content-length': '0' } }))
+    );
+
+    await expect(createHttpClient().get('/api/empty')).resolves.toBeUndefined();
+  });
+
   it('uses include credentials for cookie auth', async () => {
     server.use(
       http.get('*/api/profile', ({ request }) => {
@@ -97,6 +105,27 @@ describe('createHttpClient', () => {
       status: 500,
       message: 'Request failed with status 500'
     });
+  });
+
+  it('extracts error codes and falls back when an error body has no message', async () => {
+    server.use(
+      http.get('*/api/error-code', () =>
+        HttpResponse.json({ code: 'INVALID_REQUEST' }, { status: 422 })
+      )
+    );
+
+    await expect(createHttpClient().get('/api/error-code')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 422,
+      code: 'INVALID_REQUEST',
+      message: 'Request failed with status 422'
+    });
+  });
+
+  it('returns successful non-JSON response text', async () => {
+    server.use(http.get('*/api/text', () => new HttpResponse('ready')));
+
+    await expect(createHttpClient().get('/api/text')).resolves.toBe('ready');
   });
 
   it('throws TimeoutError when the request takes too long', async () => {

@@ -131,4 +131,13 @@ describe('authApi', () => {
       await expect(authApi.logout()).resolves.toBeUndefined();
     });
   });
+
+  describe('refresh', () => {
+    it('requests a new access token', async () => {
+      const response = { access_token: 'access-token', token_type: 'bearer' };
+      server.use(http.post('*/api/v2/auth/refresh', () => HttpResponse.json(response)));
+
+      await expect(authApi.refresh()).resolves.toEqual(response);
+    });
+  });
 });

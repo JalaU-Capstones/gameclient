@@ -5,6 +5,7 @@
   import { authApi } from '$lib/api/auth';
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
   import { resolveRedirect } from '$lib/auth/redirect';
+  import { userFacingMessage } from '$lib/errors/messages';
   import { sounds } from '$lib/audio/sounds';
   import { session } from '$lib/stores/session';
 
@@ -43,7 +44,7 @@
       } else if (err instanceof TimeoutError) {
         error = 'The server took too long to respond. Try again.';
       } else {
-        error = err instanceof Error ? err.message : 'Something went wrong.';
+        error = userFacingMessage(err instanceof ApiError ? err.code : undefined);
       }
     } finally {
       submitting = false;
