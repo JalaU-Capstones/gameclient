@@ -1,4 +1,4 @@
-import { get } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -12,15 +12,32 @@ vi.mock('$lib/api/ws', () => ({
   createPresenceClient: mocks.createPresenceClient
 }));
 
-import { globalGameplaysClient } from './ws';
+import {
+  globalGameplaysClient,
+  globalPresenceClient,
+  requestPresenceReconnect,
+  setLastPresenceToken
+} from './ws';
 
 describe('globalGameplaysClient', () => {
   beforeEach(() => {
     globalGameplaysClient.disconnect();
+    globalPresenceClient.disconnect();
+    setLastPresenceToken(null);
     mocks.disconnect.mockReset();
     mocks.createGameplaysClient.mockReset();
     mocks.createPresenceClient.mockReset();
-    mocks.createGameplaysClient.mockReturnValue({ disconnect: mocks.disconnect });
+    mocks.createGameplaysClient.mockReturnValue({
+      state: writable<'connected' | 'disconnected'>('disconnected'),
+      isAlive: vi.fn().mockReturnValue(false),
+      disconnect: mocks.disconnect
+    });
+    mocks.createPresenceClient.mockReset().mockReturnValue({
+      state: writable<'connected' | 'disconnected'>('disconnected'),
+      isAlive: vi.fn().mockReturnValue(false),
+      connect: vi.fn(),
+      disconnect: vi.fn()
+    });
   });
 
   it('returns the same instance on repeated calls', () => {
@@ -41,5 +58,34 @@ describe('globalGameplaysClient', () => {
     expect(get(globalGameplaysClient)).toBeNull();
     expect(globalGameplaysClient.getOrCreate()).not.toBeNull();
     expect(mocks.createGameplaysClient).toHaveBeenCalledTimes(2);
+  });
+
+  it('recreates a client whose connected state has a dead socket', () => {
+    const state = writable<'connected' | 'disconnected'>('connected');
+    const first = {
+      state,
+      isAlive: vi.fn().mockReturnValue(false),
+      disconnect: mocks.disconnect
+    };
+    const second = {
+      state: writable<'connected' | 'disconnected'>('disconnected'),
+      isAlive: vi.fn().mockReturnValue(false),
+      disconnect: vi.fn()
+    };
+    mocks.createGameplaysClient.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+    expect(globalGameplaysClient.getOrCreate()).toBe(first);
+    expect(globalGameplaysClient.getOrCreate()).toBe(second);
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(get(globalGameplaysClient)).toBe(second);
+  });
+
+  it('requests an owner-controlled reconnect for a dead presence client', () => {
+    const client = globalPresenceClient.getOrCreate();
+    setLastPresenceToken('access-token');
+
+    requestPresenceReconnect();
+
+    expect(client.connect).toHaveBeenCalledWith('access-token');
   });
 });
