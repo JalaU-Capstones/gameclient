@@ -122,6 +122,16 @@ describe('Game page', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('sanitizes gameplay error messages before rendering them', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+    const rawMessage = 'Opponent b2f40334-48ad-4e82-b2f4-03f2d1c1f111 is offline';
+    emit('error', { code: 'OPPONENT_OFFLINE', message: rawMessage });
+
+    expect(await screen.findByText('That player is no longer available.')).toBeInTheDocument();
+    expect(screen.queryByText(rawMessage)).not.toBeInTheDocument();
+  });
+
   it('subscribes once when the gameplay socket is already connected', async () => {
     render(GamePage);
     await screen.findByText('Ada');

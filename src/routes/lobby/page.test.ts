@@ -8,7 +8,9 @@ import LobbyPage from './+page.svelte';
 const mocks = vi.hoisted(() => {
   const presenceHandlers = new Map<string, (payload?: never) => void>();
   const gameplayHandlers = new Map<string, (payload?: never) => void>();
-  const sessionMessageHandlers = new Set<(message: { type: string; userIds?: string[] }) => void>();
+  const sessionMessageHandlers = new Set<
+    (message: { type: string; userIds?: string[]; tabId?: string }) => void
+  >();
   let presenceState = 'disconnected';
   let presenceAlive = false;
   const presenceSubscribers = new Set<(state: string) => void>();
@@ -75,7 +77,9 @@ vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/auth/sessionLock', () => ({
   announcePresenceListRequest: mocks.announcePresenceListRequest,
   createTabId: vi.fn(() => 'lobby-tab'),
-  subscribeSessionMessages: (handler: (message: { type: string; userIds?: string[] }) => void) => {
+  subscribeSessionMessages: (
+    handler: (message: { type: string; userIds?: string[]; tabId?: string }) => void
+  ) => {
     mocks.sessionMessageHandlers.add(handler);
     return () => mocks.sessionMessageHandlers.delete(handler);
   }
@@ -178,13 +182,55 @@ describe('Lobby page', () => {
     expect(await screen.findByText('Bob')).toBeInTheDocument();
   });
 
+  it('renders a direct presence list response addressed to this tab', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'presence-users-direct', tabId: 'lobby-tab', userIds: ['bob'] })
+    );
+
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+  });
+
+  it('shows a direct presence snapshot received before the 2.5-second loading timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      render(LobbyPage);
+      await vi.advanceTimersByTimeAsync(2400);
+      mocks.sessionMessageHandlers.forEach((handler) =>
+        handler({ type: 'presence-users-direct', tabId: 'lobby-tab', userIds: ['bob'] })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(screen.getByText('Bob')).toBeInTheDocument();
+      expect(screen.queryByText('Loading players...')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders a sanitized gameplay error without exposing the backend message', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.gameplayHandlers.has('error')).toBe(true));
+    const rawMessage = 'Opponent b2f40334-48ad-4e82-b2f4-03f2d1c1f111 is offline';
+    emit(mocks.gameplayHandlers, 'error', {
+      code: 'OPPONENT_OFFLINE',
+      message: rawMessage
+    });
+
+    expect(await screen.findByText('That player is no longer available.')).toBeInTheDocument();
+    expect(screen.queryByText(rawMessage)).not.toBeInTheDocument();
+    expect(screen.queryByText(/b2f40334-48ad-4e82-b2f4-03f2d1c1f111/)).not.toBeInTheDocument();
+  });
+
   it('uses a delayed fallback and safety timeout without leaving loading forever', async () => {
     vi.useFakeTimers();
     try {
       render(LobbyPage);
+      expect(mocks.announcePresenceListRequest).toHaveBeenCalledWith('lobby-tab');
       await vi.advanceTimersByTimeAsync(1200);
       expect(mocks.requestPresenceReconnect).toHaveBeenCalledTimes(2);
-      expect(mocks.announcePresenceListRequest).toHaveBeenCalledWith('lobby-tab');
+      expect(mocks.announcePresenceListRequest).toHaveBeenCalledTimes(2);
 
       await vi.advanceTimersByTimeAsync(1300);
       expect(screen.getByText('Waiting for challengers...')).toBeInTheDocument();

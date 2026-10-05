@@ -55,7 +55,7 @@
           authRetryUsed = true;
           authRetryTimer = setTimeout(() => {
             authRetryTimer = undefined;
-            void bootstrapSession(true)
+            void bootstrapSession()
               .then(({ accessToken }) => {
                 if (!accessToken) throw new Error('No access token from session bootstrap');
                 gameplaysClient.connect(accessToken);
@@ -252,10 +252,8 @@
           if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
             waitingForRematch = false;
           }
-          if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
-            error = userFacingMessage(payload.code, 'Something went wrong. Please try again.');
-            setTimeout(() => (error = ''), 3000);
-          }
+          error = userFacingMessage(payload?.code, 'Something went wrong. Please try again.');
+          setTimeout(() => (error = ''), 3000);
         })
       );
 
@@ -285,7 +283,7 @@
         err,
         (message) => (error = message),
         `/game/${id}`,
-        err instanceof Error ? err.message : 'Failed to load game'
+        userFacingMessage(err instanceof ApiError ? err.code : undefined, 'Failed to load game')
       );
       isLoading = false;
     }

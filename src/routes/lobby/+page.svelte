@@ -51,7 +51,7 @@
           authRetryUsed = true;
           authRetryTimer = setTimeout(() => {
             authRetryTimer = undefined;
-            void bootstrapSession(true)
+            void bootstrapSession()
               .then(({ accessToken }) => {
                 if (!isLobbyMounted) return;
                 if (!accessToken)
@@ -87,7 +87,13 @@
       if (import.meta.env.DEV) console.debug('[lobby] fallback timer');
       requestPresenceReconnect();
       if (presenceClient.isAlive()) presenceClient.send('list_online_users');
-      else announcePresenceListRequest(tabId);
+      else {
+        if (import.meta.env.DEV) {
+          console.debug('[lobby] presence-list-request fallback fired');
+          console.debug('[lobby] announcePresenceListRequest called');
+        }
+        announcePresenceListRequest(tabId);
+      }
     }, 1200);
 
     presenceClient = globalPresenceClient.getOrCreate();
@@ -129,6 +135,9 @@
     unsubscribers.push(
       subscribeSessionMessages((message) => {
         if (message.type === 'presence-users') processOnlineUsers(message.userIds);
+        if (message.type === 'presence-users-direct' && message.tabId === tabId) {
+          processOnlineUsers(message.userIds);
+        }
       })
     );
     unsubscribers.push(presenceClient.on('user_online', requestOnlineUsers));
@@ -143,6 +152,10 @@
         if (state === 'connected') requestOnlineUsers();
       })
     );
+    if (!presenceClient.isAlive()) {
+      if (import.meta.env.DEV) console.debug('[lobby] announcePresenceListRequest called');
+      announcePresenceListRequest(tabId);
+    }
     if (get(presenceClient.state) !== 'connected') requestPresenceReconnect();
     else requestOnlineUsers();
 
