@@ -8,6 +8,7 @@ import { session } from '$lib/stores/session';
 import type { User } from '$lib/types/api';
 import {
   acquireSessionLock,
+  broadcastLogout,
   broadcastSessionRefreshed,
   getLastSessionRefreshAt
 } from './sessionLock';
@@ -27,7 +28,25 @@ function ensureSessionGeneration(generation: number): void {
   }
 }
 
-async function bootstrap(forceRefresh: boolean, generation: number): Promise<BootstrapResult> {
+async function refreshAccessToken(generation: number): Promise<string> {
+  let accessToken: string;
+  try {
+    ({ access_token: accessToken } = await authApi.refresh());
+  } catch (error) {
+    if (error instanceof ApiError && error.isUnauthorized) {
+      throw new ApiError('Session ended during authentication', 401, error.code);
+    }
+    throw error;
+  }
+  if (!accessToken) throw new Error('No access token from refresh');
+  ensureSessionGeneration(generation);
+  localAccessToken = accessToken;
+  broadcastSessionRefreshed();
+  if (import.meta.env.DEV) console.debug('[auth] refresh complete', !!accessToken);
+  return accessToken;
+}
+
+async function bootstrap(generation: number): Promise<BootstrapResult> {
   const release = await acquireSessionLock();
   let lockReleased = false;
   const releaseLock = () => {
@@ -37,7 +56,6 @@ async function bootstrap(forceRefresh: boolean, generation: number): Promise<Boo
   };
   try {
     let user: User;
-    let refreshedToken: string | null = null;
     try {
       if (import.meta.env.DEV) console.debug('[auth] bootstrap requesting current user');
       user = await httpClient.get<User>('/api/v2/auth/me');
@@ -47,8 +65,10 @@ async function bootstrap(forceRefresh: boolean, generation: number): Promise<Boo
       ensureSessionGeneration(generation);
 
       try {
-        if (import.meta.env.DEV)
-          console.debug('[auth] rechecking current user after lock contention');
+        if (import.meta.env.DEV) console.debug('[auth] delaying before current-user retry');
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 1000));
+        ensureSessionGeneration(generation);
+        if (import.meta.env.DEV) console.debug('[auth] retrying current user after lock wait');
         user = await httpClient.get<User>('/api/v2/auth/me');
         ensureSessionGeneration(generation);
       } catch (secondAttempt) {
@@ -56,53 +76,39 @@ async function bootstrap(forceRefresh: boolean, generation: number): Promise<Boo
           throw secondAttempt;
         }
         ensureSessionGeneration(generation);
-        if (import.meta.env.DEV)
-          console.debug('[auth] current user unauthorized after recheck; refreshing session');
-        const { access_token } = await authApi.refresh();
-        if (!access_token) throw new Error('No access token from refresh');
-        ensureSessionGeneration(generation);
-        refreshedToken = access_token;
+        if (import.meta.env.DEV) console.debug('[auth] current user unauthorized after retry');
+        const accessToken = await refreshAccessToken(generation);
         user = await httpClient.get<User>('/api/v2/auth/me');
         ensureSessionGeneration(generation);
+        return { accessToken, user };
       }
     }
 
-    if (refreshedToken) {
-      localAccessToken = refreshedToken;
-      broadcastSessionRefreshed();
-      if (import.meta.env.DEV) console.debug('[auth] refresh complete', !!refreshedToken);
-      return { accessToken: refreshedToken, user };
-    }
+    if (localAccessToken) return { accessToken: localAccessToken, user };
 
     const lastRefreshAt = getLastSessionRefreshAt();
-    if (!forceRefresh && lastRefreshAt && Date.now() - lastRefreshAt < 30_000) {
-      if (localAccessToken) return { accessToken: localAccessToken, user };
-
+    if (lastRefreshAt && Date.now() - lastRefreshAt < 30_000) {
       releaseLock();
       await new Promise((resolveDelay) =>
         setTimeout(resolveDelay, Math.max(1, lastRefreshAt + 30_000 - Date.now()))
       );
       ensureSessionGeneration(generation);
-      return bootstrap(forceRefresh, generation);
+      return bootstrap(generation);
     }
 
-    if (import.meta.env.DEV) console.debug('[auth] refreshing session');
-    const { access_token } = await authApi.refresh();
-    if (!access_token) throw new Error('No access token from refresh');
-    ensureSessionGeneration(generation);
-    localAccessToken = access_token;
-    broadcastSessionRefreshed();
-    if (import.meta.env.DEV) console.debug('[auth] refresh complete', !!access_token);
-    return { accessToken: access_token, user };
+    if (import.meta.env.DEV)
+      console.debug('[auth] requesting WebSocket token for authenticated session');
+    const accessToken = await refreshAccessToken(generation);
+    return { accessToken, user };
   } finally {
     releaseLock();
   }
 }
 
-export function bootstrapSession(forceRefresh = false): Promise<BootstrapResult> {
+export function bootstrapSession(): Promise<BootstrapResult> {
   if (!inFlight) {
     const generation = sessionGeneration;
-    inFlight = bootstrap(forceRefresh, generation)
+    inFlight = bootstrap(generation)
       .then((result) => {
         ensureSessionGeneration(generation);
         return result;
@@ -129,6 +135,7 @@ export function handleAuthFailure(
   }
 
   if (error instanceof ApiError && error.isUnauthorized) {
+    broadcastLogout();
     globalPresenceClient.disconnect();
     globalGameplaysClient.disconnect();
     clearBootstrapSessionCache();

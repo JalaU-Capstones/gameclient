@@ -2,13 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
-  refresh: vi.fn()
+  refresh: vi.fn(),
+  broadcastLogout: vi.fn()
 }));
 
 vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/api/auth', () => ({ authApi: { refresh: mocks.refresh } }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+vi.mock('./sessionLock', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sessionLock')>()),
+  broadcastLogout: mocks.broadcastLogout
+}));
 vi.mock('$lib/stores/ws', () => ({
   globalPresenceClient: { disconnect: vi.fn() },
   globalGameplaysClient: { disconnect: vi.fn() },
@@ -18,7 +23,7 @@ vi.mock('$lib/stores/ws', () => ({
 import { bootstrapSession, clearBootstrapSessionCache } from './bootstrap';
 import { session } from '$lib/stores/session';
 import { broadcastSessionRefreshed, openSessionChannel } from './sessionLock';
-import { ApiError } from '$lib/api/errors';
+import { ApiError, NetworkError } from '$lib/api/errors';
 
 const user = {
   id: 'u1',
@@ -40,6 +45,7 @@ describe('bootstrapSession', () => {
     session.reset();
     mocks.get.mockReset().mockResolvedValue(user);
     mocks.refresh.mockReset().mockResolvedValue({ access_token: 'access-token' });
+    mocks.broadcastLogout.mockReset();
   });
 
   afterEach(() => {
@@ -77,6 +83,62 @@ describe('bootstrapSession', () => {
     expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(mocks.get).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ accessToken: 'access-token', user });
+  });
+
+  it('runs one refresh for concurrent bootstrap calls recovering from unauthorized /me', async () => {
+    let attempts = 0;
+    mocks.get.mockImplementation(async () => {
+      attempts += 1;
+      if (attempts < 3) throw new ApiError('Unauthorized', 401);
+      return user;
+    });
+
+    const results = await Promise.all([bootstrapSession(), bootstrapSession()]);
+
+    expect(results).toEqual([
+      { accessToken: 'access-token', user },
+      { accessToken: 'access-token', user }
+    ]);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(mocks.get).toHaveBeenCalledTimes(3);
+  });
+
+  it('uses the successful refresh token on a later /me check without refreshing again', async () => {
+    await expect(bootstrapSession()).resolves.toEqual({
+      accessToken: 'access-token',
+      user
+    });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+
+    mocks.get.mockClear().mockResolvedValue(user);
+    await expect(bootstrapSession()).resolves.toEqual({
+      accessToken: 'access-token',
+      user
+    });
+
+    expect(mocks.get).toHaveBeenCalledOnce();
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('does not broadcast logout for a transient bootstrap error', async () => {
+    mocks.get.mockRejectedValue(new NetworkError());
+
+    await expect(bootstrapSession()).rejects.toBeInstanceOf(NetworkError);
+
+    expect(mocks.broadcastLogout).not.toHaveBeenCalled();
+  });
+
+  it('throws an unauthorized ApiError when refresh is unauthorized', async () => {
+    mocks.get
+      .mockRejectedValueOnce(new ApiError('Unauthorized', 401))
+      .mockRejectedValueOnce(new ApiError('Unauthorized', 401));
+    mocks.refresh.mockRejectedValueOnce(new ApiError('Unauthorized', 401));
+
+    await expect(bootstrapSession()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401
+    });
+    expect(mocks.broadcastLogout).not.toHaveBeenCalled();
   });
 
   it('waits for a recent refresh from another tab before refreshing without a local token', async () => {
