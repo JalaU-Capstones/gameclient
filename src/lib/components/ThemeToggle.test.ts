@@ -38,4 +38,11 @@ describe('ThemeToggle', () => {
     expect(document.documentElement).not.toHaveClass('dark');
     expect(mocks.play).toHaveBeenCalledWith('click');
   });
+
+  it('renders the dark-mode action when the current theme is light', () => {
+    theme.set('light');
+    render(ThemeToggle);
+
+    expect(screen.getByRole('button', { name: 'Switch to dark mode' })).toHaveTextContent('Dark');
+  });
 });
