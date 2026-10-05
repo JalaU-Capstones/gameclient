@@ -1,4 +1,4 @@
-import { writable, type Readable } from 'svelte/store';
+import { get, writable, type Readable } from 'svelte/store';
 import { buildWsUrl } from '$lib/config';
 import type { ConnectionState, WsCloseCode, WsEnvelope } from '$lib/types/ws';
 
@@ -15,6 +15,7 @@ export type EventHandler<T = unknown> = (payload: T) => void;
 
 export interface WebSocketClient {
   readonly state: Readable<ConnectionState>;
+  isAlive(): boolean;
   connect(token: string): void;
   disconnect(): void;
   send(event: string, payload?: unknown): void;
@@ -22,6 +23,18 @@ export interface WebSocketClient {
 }
 
 const defaultWsCloseCode: WsCloseCode = 1000;
+
+function sanitizeDiagnosticText(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value
+    .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+    .replace(/\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[redacted]')
+    .replace(
+      /\b(access[_-]?token|refresh[_-]?token|token)\s*[:=]\s*["']?[^\s,;]+/gi,
+      (_match, label: string) => `${label}=[redacted]`
+    )
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[redacted]');
+}
 
 export function createWebSocketClient(options: WebSocketClientOptions): WebSocketClient {
   const {
@@ -68,6 +81,10 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
   };
 
   const setState = (next: ConnectionState) => {
+    const previous = get(state);
+    if (import.meta.env.DEV && previous !== next) {
+      console.debug('[ws] state transition', previous, '→', next, path);
+    }
     state.set(next);
   };
 
@@ -81,6 +98,10 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
   };
 
   const scheduleReconnect = () => {
+    if (reconnectTimer) {
+      return;
+    }
+
     if (intentionalClose || !token || !shouldReconnect) {
       setState('disconnected');
       return;
@@ -142,6 +163,20 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
       return;
     }
 
+    if (socket) {
+      const previousSocket = socket;
+      socket = null;
+      previousSocket.onopen = null;
+      previousSocket.onmessage = null;
+      previousSocket.onerror = null;
+      previousSocket.onclose = null;
+      try {
+        previousSocket.close(defaultWsCloseCode, 'reconnect');
+      } catch {
+        // Ignore close errors while replacing a dead socket.
+      }
+    }
+
     token = nextToken;
     intentionalClose = false;
     shouldReconnect = true;
@@ -159,6 +194,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
     ws.onopen = () => {
       setState('authenticating');
       ws.send(JSON.stringify({ event: 'auth', payload: { token: nextToken } }));
+      if (import.meta.env.DEV) console.debug('[ws] auth message sent for', path);
 
       authTimer = setTimeout(() => {
         if (socket !== ws || ws.readyState !== WebSocket.OPEN) {
@@ -166,7 +202,9 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         }
 
         shouldReconnect = false;
-        ws.close(4401, 'auth_timeout');
+        if (import.meta.env.DEV) console.debug('[ws] auth_timeout', path);
+        dispatchToHandlers('auth_failed', { reason: 'auth_timeout', path });
+        ws.close(4408, 'auth_timeout');
       }, authTimeoutMs);
     };
 
@@ -194,6 +232,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         shouldReconnect = true;
         setState('connected');
         startPingLoop();
+        if (import.meta.env.DEV) console.debug('[ws] auth_ok', path);
         dispatchToHandlers(parsed.event, parsed.payload);
         return;
       }
@@ -201,7 +240,9 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
       if (parsed.event === 'auth_error') {
         shouldReconnect = false;
         clearAuthTimer();
-        console.warn('WebSocket auth failed', parsed.payload);
+        dispatchToHandlers('auth_failed', { reason: 'auth_error', path });
+        if (import.meta.env.DEV) console.debug('[ws] auth_error', path);
+        console.warn('[ws] authentication failed', path);
         if (ws.readyState === WebSocket.OPEN) {
           ws.close(4401, 'auth_error');
         }
@@ -210,9 +251,14 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
 
       if (parsed.event === 'error') {
         const payload = parsed.payload as { code?: string; message?: string } | undefined;
-        console.warn(
-          `WebSocket error (${payload?.code ?? 'UNKNOWN'}): ${payload?.message ?? 'Unknown error'}`
-        );
+        if (import.meta.env.DEV) {
+          console.debug('[ws] error', path, {
+            code: payload?.code,
+            message: sanitizeDiagnosticText(payload?.message)
+          });
+        }
+        console.warn('[ws] error', { code: payload?.code, path });
+        dispatchToHandlers(parsed.event, parsed.payload);
         return;
       }
 
@@ -226,8 +272,26 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
     ws.onclose = (closeEvent) => {
       clearAuthTimer();
       clearPing();
+      if (import.meta.env.DEV) {
+        console.debug('[ws] socket closed', path, {
+          code: closeEvent.code,
+          reason: sanitizeDiagnosticText(closeEvent.reason)
+        });
+      }
 
       if (intentionalClose) {
+        setState('disconnected');
+        socket = null;
+        return;
+      }
+
+      if (closeEvent.code === 4401 || closeEvent.code === 4408) {
+        shouldReconnect = false;
+        dispatchToHandlers('auth_failed', {
+          reason: closeEvent.reason || 'auth_failed',
+          code: closeEvent.code,
+          path
+        });
         setState('disconnected');
         socket = null;
         return;
@@ -239,27 +303,25 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         return;
       }
 
-      if (closeEvent.code === 4401 || closeEvent.code === 4408) {
-        shouldReconnect = false;
-        setState('disconnected');
-        socket = null;
-        return;
-      }
-
       scheduleReconnect();
     };
   }
 
   function connect(nextToken: string): void {
+    if (import.meta.env.DEV) console.debug('[ws] connect requested for', path);
     openSocket(nextToken, false);
   }
 
   return {
     state,
+    isAlive(): boolean {
+      return socket?.readyState === WebSocket.OPEN;
+    },
     connect(nextToken: string): void {
       connect(nextToken);
     },
     disconnect(): void {
+      if (import.meta.env.DEV) console.debug('[ws] disconnect requested for', path);
       intentionalClose = true;
       shouldReconnect = false;
       clearReconnect();
@@ -267,7 +329,20 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
       setState('disconnected');
     },
     send(event: string, payload?: unknown): void {
+      if (import.meta.env.DEV) console.debug('[ws] send requested', path, event);
+      if (socket && socket.readyState !== WebSocket.OPEN) {
+        if (socket.readyState !== WebSocket.CLOSING && socket.readyState !== WebSocket.CLOSED) {
+          return;
+        }
+      }
+
       if (!socket || socket.readyState !== WebSocket.OPEN) {
+        if (import.meta.env.DEV)
+          console.debug('[ws] send skipped; socket is not open', path, event);
+        setState('disconnected');
+        if (!intentionalClose && token && shouldReconnect) {
+          scheduleReconnect();
+        }
         return;
       }
 
