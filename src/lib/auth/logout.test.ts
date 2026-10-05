@@ -106,4 +106,23 @@ describe('performLogout', () => {
     expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
   });
+
+  it('continues logout when both WebSocket disconnects throw', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mocks.disconnectGameplays.mockImplementation(() => {
+      throw new Error('gameplay disconnected');
+    });
+    mocks.disconnectPresence.mockImplementation(() => {
+      throw new Error('presence disconnected');
+    });
+    mocks.logout.mockRejectedValue(new Error('backend unavailable'));
+
+    await expect(performLogout()).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(mocks.clear).toHaveBeenCalledOnce();
+    expect(mocks.resetHistory).toHaveBeenCalledOnce();
+    expect(mocks.goto).toHaveBeenCalledWith('/login');
+    warn.mockRestore();
+  });
 });
