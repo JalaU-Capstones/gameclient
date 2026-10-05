@@ -72,6 +72,15 @@ describe('AudioService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it('gracefully skips unlock when Web Audio is unavailable', async () => {
+    vi.stubGlobal('AudioContext', undefined);
+    await expect(service.unlock()).resolves.toBeUndefined();
+
+    expect(FakeAudioContext.instances).toHaveLength(0);
+    expect(service.isUnlocked()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('shares context creation for overlapping unlock calls', async () => {
     await Promise.all([service.unlock(), service.unlock()]);
 
