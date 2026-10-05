@@ -8,12 +8,20 @@ import GamePage from './+page.svelte';
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (payload?: never) => void>();
   return {
-    refresh: vi.fn(),
+    bootstrapSession: vi.fn(),
     get: vi.fn(),
     goto: vi.fn(),
     handlers,
     play: vi.fn(),
+    gameplayAlive: true,
     client: {
+      isAlive: () => mocks.gameplayAlive,
+      state: {
+        subscribe: (subscriber: (state: string) => void) => {
+          subscriber('connected');
+          return () => {};
+        }
+      },
       on: vi.fn((event: string, handler: (payload?: never) => void) => {
         handlers.set(event, handler);
         return () => handlers.delete(event);
@@ -38,7 +46,10 @@ vi.mock('$app/stores', () => ({
 }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
-vi.mock('$lib/api/auth', () => ({ authApi: { refresh: mocks.refresh } }));
+vi.mock('$lib/auth/bootstrap', async (importOriginal) => {
+  const original = await importOriginal<typeof import('$lib/auth/bootstrap')>();
+  return { ...original, bootstrapSession: mocks.bootstrapSession };
+});
 vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$lib/stores/ws', () => ({
@@ -71,7 +82,7 @@ describe('Game page', () => {
   beforeEach(() => {
     session.reset();
     session.setUser(host);
-    mocks.refresh.mockReset().mockResolvedValue({ access_token: 'token' });
+    mocks.bootstrapSession.mockReset().mockResolvedValue({ accessToken: 'token', user: host });
     mocks.get.mockReset().mockImplementation(async (path: string) => {
       if (path.startsWith('/api/v2/gameplays/')) {
         return {
@@ -94,10 +105,11 @@ describe('Game page', () => {
     mocks.client.send.mockReset();
     mocks.client.connect.mockReset();
     mocks.play.mockReset();
+    mocks.gameplayAlive = true;
   });
 
   it('renders an empty board while game data is loading', () => {
-    mocks.refresh.mockReturnValue(new Promise(() => {}));
+    mocks.bootstrapSession.mockReturnValue(new Promise(() => {}));
     render(GamePage);
 
     expect(screen.getByText('Loading Game...')).toBeInTheDocument();
@@ -108,6 +120,26 @@ describe('Game page', () => {
 
     expect(await screen.findByText('Ada')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('subscribes once when the gameplay socket is already connected', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    expect(mocks.client.connect).not.toHaveBeenCalled();
+    expect(mocks.client.send).toHaveBeenCalledTimes(1);
+    expect(mocks.client.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' });
+  });
+
+  it('subscribes again after gameplay socket authentication on reconnect', async () => {
+    mocks.gameplayAlive = false;
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    expect(mocks.client.connect).toHaveBeenCalledWith('token');
+    emit('auth_ok');
+
+    expect(mocks.client.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' });
   });
 
   it('disables board cells when it is the opponent’s turn', async () => {

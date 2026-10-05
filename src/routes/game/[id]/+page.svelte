@@ -1,13 +1,16 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { authApi } from '$lib/api/auth';
+  import { bootstrapSession, handleAuthFailure } from '$lib/auth/bootstrap';
+  import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
   import { httpClient } from '$lib/api/client';
   import { globalGameplaysClient } from '$lib/stores/ws';
   import type { WebSocketClient } from '$lib/api/ws';
   import { currentUser } from '$lib/stores/session';
+  import { userFacingMessage } from '$lib/errors/messages';
   import { sounds } from '$lib/audio/sounds';
   import type { User, Gameplay } from '$lib/types/api';
 
@@ -30,6 +33,8 @@
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
   let waitingForRematch = $state(false);
   let currentGameId = $state('');
+  let authRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let authRetryUsed = false;
 
   // Derived state
   let isGameOver = $derived(winner !== null || endReason !== null);
@@ -37,6 +42,34 @@
     endReason === 'draw' || (isGameOver && (winner === null || winner === 'None'))
   );
   let isMyTurn = $derived($currentUser?.id === turn && !isGameOver);
+
+  function handleGameplayAuthFailure(failure: unknown, gameId: string) {
+    handleAuthFailure(
+      failure,
+      (message) => {
+        error = message;
+        if (
+          (failure instanceof NetworkError || failure instanceof TimeoutError) &&
+          !authRetryUsed
+        ) {
+          authRetryUsed = true;
+          authRetryTimer = setTimeout(() => {
+            authRetryTimer = undefined;
+            void bootstrapSession(true)
+              .then(({ accessToken }) => {
+                if (!accessToken) throw new Error('No access token from session bootstrap');
+                gameplaysClient.connect(accessToken);
+              })
+              .catch((retryFailure: unknown) => {
+                handleAuthFailure(retryFailure, (retryMessage) => (error = retryMessage), gameId);
+              });
+          }, 1200);
+        }
+      },
+      `/game/${gameId}`,
+      'Failed to connect to game.'
+    );
+  }
 
   let winLine = $derived.by(() => {
     if (!winner || endReason !== 'line') return null;
@@ -92,7 +125,9 @@
     waitingForRematch = false;
 
     try {
-      const { access_token } = await authApi.refresh();
+      const { accessToken } = await bootstrapSession();
+      if (!accessToken)
+        throw new Error('No access token is available for the WebSocket connection');
 
       const gameplay = await httpClient.get<Gameplay>(`/api/v2/gameplays/${id}`);
 
@@ -139,6 +174,10 @@
 
       unsubscribers.push(
         gameplaysClient.on('auth_ok', () => {
+          if (import.meta.env.DEV) console.debug('[game] gameplay auth_ok');
+          authRetryUsed = false;
+          if (authRetryTimer) clearTimeout(authRetryTimer);
+          authRetryTimer = undefined;
           gameplaysClient.send('subscribe_game', { game_id: id });
         })
       );
@@ -209,17 +248,45 @@
       );
 
       unsubscribers.push(
-        gameplaysClient.on('error', (payload: { message?: string }) => {
-          waitingForRematch = false;
-          error = payload.message || 'Unknown error occurred.';
-          setTimeout(() => (error = ''), 3000);
+        gameplaysClient.on('error', (payload: { code?: string; message?: string } | undefined) => {
+          if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
+            waitingForRematch = false;
+          }
+          if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
+            error = userFacingMessage(payload.code, 'Something went wrong. Please try again.');
+            setTimeout(() => (error = ''), 3000);
+          }
         })
       );
 
-      gameplaysClient.connect(access_token);
-      gameplaysClient.send('subscribe_game', { game_id: id });
+      unsubscribers.push(
+        gameplaysClient.on(
+          'auth_failed',
+          (payload: { code?: number; reason?: string } | undefined) => {
+            const failure =
+              payload?.code === 4401 || payload?.reason === 'auth_error'
+                ? new ApiError('Gameplay authentication failed', 401, 'AUTH_FAILED')
+                : new TimeoutError('Gameplay authentication timed out');
+            handleGameplayAuthFailure(failure, id);
+          }
+        )
+      );
+
+      const isConnected = get(gameplaysClient.state) === 'connected' && gameplaysClient.isAlive();
+      if (isConnected) {
+        if (import.meta.env.DEV) console.debug('[game] reusing connected gameplay socket');
+        gameplaysClient.send('subscribe_game', { game_id: id });
+      } else {
+        if (import.meta.env.DEV) console.debug('[game] connecting gameplay socket');
+        gameplaysClient.connect(accessToken);
+      }
     } catch (err: unknown) {
-      error = err instanceof Error ? err.message : 'Failed to load game';
+      handleAuthFailure(
+        err,
+        (message) => (error = message),
+        `/game/${id}`,
+        err instanceof Error ? err.message : 'Failed to load game'
+      );
       isLoading = false;
     }
   }
@@ -232,7 +299,13 @@
     }
   });
 
+  onMount(() => {
+    if (import.meta.env.DEV) console.debug('[game] mount');
+  });
+
   onDestroy(() => {
+    if (import.meta.env.DEV) console.debug('[game] destroy; retaining gameplay socket');
+    if (authRetryTimer) clearTimeout(authRetryTimer);
     unsubscribers.forEach((unsub) => unsub());
   });
 
