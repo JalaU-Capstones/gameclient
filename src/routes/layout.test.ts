@@ -300,6 +300,22 @@ describe('layout auth guard', () => {
     expect(mocks.presenceDisconnect).not.toHaveBeenCalled();
   });
 
+  it('answers another tab presence-list-request while this tab owns presence', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceSend.mockReset();
+    mocks.sessionMessageHandlers.forEach((handler) => handler({ type: 'presence-list-request' }));
+
+    expect(mocks.presenceSend).toHaveBeenCalledWith('list_online_users');
+  });
+
   it('reconnects the owned presence client when the visible tab has a dead socket', async () => {
     session.setUser({
       id: '1',
@@ -352,6 +368,21 @@ describe('layout auth guard', () => {
     render(Layout, { props: { children: stubChild } });
 
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/login'));
+  });
+
+  it('redirects an authenticated user from the root route to the lobby', async () => {
+    currentPath = '/';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
+    expect(mocks.goto).not.toHaveBeenCalledWith('/login');
   });
 
   it.each([

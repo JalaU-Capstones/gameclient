@@ -129,11 +129,11 @@
     presenceStarting = (async () => {
       const result =
         forceRefresh || !presenceAccessToken
-          ? await bootstrapSession(forceRefresh)
+          ? await bootstrapSession()
           : { accessToken: presenceAccessToken };
       const accessToken = result?.accessToken;
       if (import.meta.env.DEV)
-        console.debug('[layout] presence bootstrap result', { accessToken: !!accessToken, result });
+        console.debug('[layout] presence bootstrap result', { accessToken: !!accessToken });
       if (!accessToken) throw new Error('No access token is available for the presence connection');
       if (!layoutMounted || !get(isAuthenticated)) return;
       presenceAccessToken = accessToken;
@@ -344,12 +344,15 @@
       void goto(resolve('/login'));
     });
     const unsubscribeMessages = subscribeSessionMessages((message) => {
-      if (
-        message.type === 'presence-list-request' &&
-        presenceOwnerRelease &&
-        presenceClient?.isAlive()
-      ) {
-        presenceClient.send('list_online_users');
+      if (message.type === 'presence-list-request') {
+        if (import.meta.env.DEV) {
+          console.debug('[layout] presence-list-request received', {
+            hasOwner: !!presenceOwnerRelease
+          });
+        }
+        if (presenceOwnerRelease !== null && presenceClient?.isAlive()) {
+          presenceClient.send('list_online_users');
+        }
       }
     });
     return () => {
@@ -389,6 +392,7 @@
   $effect(() => {
     if (import.meta.env.DEV) {
       console.debug('[layout] authentication state', {
+        path: $page.url.pathname,
         hydrated: $isHydrated,
         authenticated: $isAuthenticated
       });
@@ -425,6 +429,13 @@
     const redirectTo = $page.url.pathname + $page.url.search;
     const url = resolve(`/login?redirect=${encodeURIComponent(redirectTo)}`);
     goto(url);
+  });
+
+  $effect(() => {
+    if (!$isHydrated) return;
+    if (!$isAuthenticated) return;
+    if ($page.url.pathname !== '/') return;
+    goto(resolve('/lobby'));
   });
 
   // Redirect authenticated users away from public routes without discarding their intended destination.
