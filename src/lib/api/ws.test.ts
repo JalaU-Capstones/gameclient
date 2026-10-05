@@ -66,6 +66,38 @@ describe('createWebSocketClient', () => {
     expect(server.messages).toContainEqual({ event: 'auth', payload: { token: 'token-abc' } });
   });
 
+  it('redacts bare UUIDs from development WebSocket diagnostics', async () => {
+    const server = new WS('ws://localhost:3000/api/v2/ws/gameplays', { jsonProtocol: true });
+    const client = createWebSocketClient({
+      path: '/api/v2/ws/gameplays',
+      authTimeoutMs: 250,
+      pingIntervalMs: 500
+    });
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+
+    client.connect('token-diagnostic');
+    await server.connected;
+    server.send({ event: 'auth_ok', payload: { user_id: 'user-id' } });
+    await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
+    server.send({
+      event: 'error',
+      payload: {
+        code: 'OPPONENT_OFFLINE',
+        message: 'Opponent b2f40334-48ad-4e82-b2f4-03f2d1c1f111 is offline'
+      }
+    });
+
+    await vi.waitFor(() =>
+      expect(debug).toHaveBeenCalledWith('[ws] error', '/api/v2/ws/gameplays', {
+        code: 'OPPONENT_OFFLINE',
+        message: 'Opponent [redacted] is offline'
+      })
+    );
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('b2f40334-48ad-4e82-b2f4-03f2d1c1f111');
+    client.disconnect();
+    debug.mockRestore();
+  });
+
   it('closes when auth times out and does not reconnect', async () => {
     const server = new WS('ws://localhost:3000/api/v2/ws/gameplays', { jsonProtocol: true });
     const client = createWebSocketClient({

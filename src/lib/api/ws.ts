@@ -29,6 +29,7 @@ function sanitizeDiagnosticText(value: string | undefined): string | undefined {
   return value
     .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
     .replace(/\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[redacted]')
+    .replace(/\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi, '[redacted]')
     .replace(
       /\b(access[_-]?token|refresh[_-]?token|token)\s*[:=]\s*["']?[^\s,;]+/gi,
       (_match, label: string) => `${label}=[redacted]`
