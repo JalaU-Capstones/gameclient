@@ -7,6 +7,7 @@ export type SessionMessage =
   | { type: 'presence-owner'; tabId: string }
   | { type: 'presence-list-request'; tabId: string }
   | { type: 'presence-users'; userIds: string[] }
+  | { type: 'presence-users-direct'; userIds: string[]; tabId: string }
   | { type: 'gameplay-query'; tabId: string }
   | { type: 'gameplay-takeover'; tabId: string }
   | { type: 'gameplay-release'; tabId: string }
@@ -32,6 +33,7 @@ let presenceOwnerId: string | null = null;
 let presenceOwnerResponseAt = 0;
 let presenceLockRelease: (() => void) | null = null;
 let presenceLockPromise: Promise<() => void> | null = null;
+let lastPresenceUsers: { userIds: string[]; at: number } | null = null;
 const presenceCandidates = new Set<string>();
 const presenceWaiters = new Set<() => void>();
 let gameplayOwnerId: string | null = null;
@@ -50,16 +52,23 @@ function ensureChannel(): BroadcastChannel | null {
     if (!message || typeof message !== 'object' || !('type' in message)) return;
 
     if (import.meta.env.DEV) {
-      console.debug('[sessionLock] channel message', {
-        type: message.type,
-        tabId: 'tabId' in message ? message.tabId : undefined,
-        ownerId: 'ownerId' in message ? message.ownerId : undefined,
-        event: 'event' in message ? message.event : undefined
-      });
+      console.debug('[sessionLock] channel message', { type: message.type });
     }
 
     if (message.type === 'session-refreshed' && Number.isFinite(message.at)) {
       lastSessionRefreshAt = Math.max(lastSessionRefreshAt, message.at);
+    } else if (message.type === 'presence-list-request') {
+      if (
+        presenceLockRelease !== null &&
+        lastPresenceUsers !== null &&
+        Date.now() - lastPresenceUsers.at <= 30_000
+      ) {
+        postMessage({
+          type: 'presence-users-direct',
+          userIds: lastPresenceUsers.userIds,
+          tabId: message.tabId
+        });
+      }
     } else if (message.type === 'presence-query') {
       presenceCandidates.add(message.tabId);
       if (presenceOwnerId) announcePresenceOwner(presenceOwnerId);
@@ -214,10 +223,13 @@ export function subscribeGameplayEvents(
 }
 
 export function announcePresenceListRequest(tabId: string): void {
+  if (import.meta.env.DEV) console.debug('[sessionLock] posting presence-list-request');
   postMessage({ type: 'presence-list-request', tabId });
 }
 
 export function broadcastPresenceUsers(userIds: string[]): void {
+  lastPresenceUsers = { userIds: [...userIds], at: Date.now() };
+  if (import.meta.env.DEV) console.debug('[sessionLock] posting presence-users');
   postMessage({ type: 'presence-users', userIds });
 }
 
