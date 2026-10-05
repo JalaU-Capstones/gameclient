@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   goto: vi.fn(),
   resolve: vi.fn((path: string) => path),
   disconnectGameplays: vi.fn(),
-  disconnectPresence: vi.fn()
+  disconnectPresence: vi.fn(),
+  broadcastLogout: vi.fn()
 }));
 
 vi.mock('$app/navigation', () => ({
@@ -45,7 +46,15 @@ vi.mock('$lib/stores/session', () => ({
 
 vi.mock('$lib/stores/ws', () => ({
   globalGameplaysClient: { disconnect: mocks.disconnectGameplays },
-  globalPresenceClient: { disconnect: mocks.disconnectPresence }
+  globalPresenceClient: { disconnect: mocks.disconnectPresence },
+  setLastPresenceToken: vi.fn()
+}));
+
+vi.mock('./sessionLock', () => ({
+  broadcastLogout: mocks.broadcastLogout,
+  acquireSessionLock: vi.fn(),
+  broadcastSessionRefreshed: vi.fn(),
+  getLastSessionRefreshAt: vi.fn()
 }));
 
 import { performLogout } from './logout';
@@ -61,6 +70,7 @@ describe('performLogout', () => {
     mocks.goto.mockResolvedValue(undefined);
     mocks.disconnectGameplays.mockReset();
     mocks.disconnectPresence.mockReset();
+    mocks.broadcastLogout.mockReset();
   });
 
   it('plays the click sound and logs the user out cleanly', async () => {
@@ -79,6 +89,7 @@ describe('performLogout', () => {
       mocks.logout.mock.invocationCallOrder[0]
     );
     expect(mocks.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastLogout).toHaveBeenCalledOnce();
     expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
     expect(mocks.goto).toHaveBeenCalledWith('/login');
   });
@@ -89,6 +100,7 @@ describe('performLogout', () => {
     await performLogout();
 
     expect(mocks.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.broadcastLogout).toHaveBeenCalledOnce();
     expect(mocks.disconnectGameplays).toHaveBeenCalledOnce();
     expect(mocks.disconnectPresence).toHaveBeenCalledOnce();
     expect(mocks.resetHistory).toHaveBeenCalledTimes(1);
