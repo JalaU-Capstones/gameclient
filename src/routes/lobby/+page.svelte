@@ -256,6 +256,10 @@
     error = 'Invitation declined.';
     setTimeout(() => (error = ''), 3000);
   }
+  function handleOpenHistory() {
+    sounds.play('click');
+    goto(resolve('/history'));
+  }
 </script>
 
 <section class="space-y-10 py-8 mx-auto max-w-4xl relative">
@@ -307,7 +311,15 @@
       </ul>
     {/if}
   </div>
-
+  <div class="text-center">
+    <button
+      type="button"
+      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+      onclick={handleOpenHistory}
+    >
+      View history
+    </button>
+  </div>
   {#if waitingForAccept}
     <div
       class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
