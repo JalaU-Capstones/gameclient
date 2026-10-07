@@ -141,7 +141,7 @@ describe('History page', () => {
     const cards = await screen.findAllByRole('listitem');
     expect(within(cards[0]).getByText('Draw')).toBeInTheDocument();
     expect(within(cards[1]).getByText('In progress')).toBeInTheDocument();
-    expect(within(cards[2]).getByText('Pending')).toBeInTheDocument();
+    expect(within(cards[2]).getByText('Not started')).toBeInTheDocument();
     expect(within(cards[3]).getByText('Rejected')).toBeInTheDocument();
   });
 

@@ -21,7 +21,7 @@
     lost: 'You lost',
     draw: 'Draw',
     in_progress: 'In progress',
-    pending: 'Pending',
+    pending: 'Not started',
     rejected: 'Rejected'
   };
 
