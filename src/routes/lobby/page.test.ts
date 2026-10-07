@@ -282,7 +282,7 @@ describe('Lobby page', () => {
   it('plays a click sound and navigates to the history page', async () => {
     render(LobbyPage);
 
-    await userEvent.click(screen.getByRole('button', { name: 'View history' }));
+    await userEvent.click(screen.getByRole('button', { name: 'History' }));
 
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(mocks.goto).toHaveBeenCalledWith('/history');

@@ -266,6 +266,15 @@
   <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-[var(--neon-cyan)] mb-12">
     Lobby
   </h2>
+  <div class="flex flex-wrap justify-center gap-4">
+    <button
+      type="button"
+      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+      onclick={handleOpenHistory}
+    >
+      History
+    </button>
+  </div>
 
   {#if error}
     <div
@@ -311,15 +320,7 @@
       </ul>
     {/if}
   </div>
-  <div class="text-center">
-    <button
-      type="button"
-      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-      onclick={handleOpenHistory}
-    >
-      View history
-    </button>
-  </div>
+
   {#if waitingForAccept}
     <div
       class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
