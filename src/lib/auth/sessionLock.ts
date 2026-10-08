@@ -1,7 +1,18 @@
 export type SessionMessage =
   | { type: 'logout' }
   | { type: 'session-refreshed'; at: number }
-  | { type: 'session-release-request'; tabId: string }
+  | { type: 'session-takeover-request'; tabId: string; requestId: string }
+  | {
+      type: 'session-released';
+      tabId: string;
+      requesterTabId: string;
+      requestId: string;
+    }
+  | { type: 'takeover-ack'; tabId: string; requesterTabId: string; requestId: string }
+  | { type: 'takeover-confirmed'; tabId: string; ownerTabId: string; requestId: string }
+  | { type: 'takeover-ready'; tabId: string; requesterTabId: string; requestId: string }
+  | { type: 'takeover-failed'; tabId: string; ownerTabId: string; requestId: string }
+  | { type: 'session-takeover-dismissed'; tabId: string }
   | { type: 'presence-takeover'; tabId: string }
   | { type: 'presence-release'; tabId: string }
   | { type: 'presence-query'; tabId: string }
@@ -24,6 +35,10 @@ const sessionLockName = 'gameapi-session';
 const lockWaiters = new Set<() => void>();
 const messageHandlers = new Set<(message: SessionMessage) => void>();
 const pendingLockRequests = new Set<string>();
+const pendingSessionReleaseRequests = new Map<
+  string,
+  { requesterTabId: string; finish: (released: boolean) => void }
+>();
 let channel: BroadcastChannel | null = null;
 let channelUsers = 0;
 let fallbackOwner: string | null = null;
@@ -105,16 +120,9 @@ function ensureChannel(): BroadcastChannel | null {
     } else if (message.type === 'gameplay-event') {
       messageHandlers.forEach((handler) => handler(message));
       return;
-    } else if (message.type === 'session-release-request') {
-      const isPresenceOwner = presenceOwnerId === message.tabId;
-      const isGameplayOwner = gameplayOwnerId === message.tabId;
-      if (!isPresenceOwner && !isGameplayOwner) return;
-      if (isPresenceOwner && presenceLockRelease) {
-        releasePresenceOwnership();
-      }
-      if (isGameplayOwner && gameplayLockRelease) {
-        releaseGameplayOwnership();
-      }
+    } else if (message.type === 'session-released') {
+      const pending = pendingSessionReleaseRequests.get(message.requestId);
+      if (pending?.requesterTabId === message.requesterTabId) pending.finish(true);
     } else if (message.type === 'session-lock-request') {
       pendingLockRequests.add(message.requestId);
       if (fallbackOwner) {
@@ -178,14 +186,85 @@ export function broadcastLogout(): void {
   postMessage({ type: 'logout' });
 }
 
-export function broadcastSessionRelease(tabId: string): void {
-  postMessage({ type: 'session-release-request', tabId });
+export function broadcastSessionTakeoverRequest(tabId: string, requestId = createTabId()): string {
+  postMessage({ type: 'session-takeover-request', tabId, requestId });
+  return requestId;
 }
 
-export function onSessionReleaseRequest(handler: (requesterTabId: string) => void): () => void {
+export function broadcastSessionTakeoverDismissed(tabId: string): void {
+  postMessage({ type: 'session-takeover-dismissed', tabId });
+}
+
+export function broadcastTakeoverAck(
+  ownerTabId: string,
+  requesterTabId: string,
+  requestId: string
+): void {
+  postMessage({ type: 'takeover-ack', tabId: ownerTabId, requesterTabId, requestId });
+}
+
+export function broadcastTakeoverConfirmed(
+  requesterTabId: string,
+  ownerTabId: string,
+  requestId: string
+): void {
+  postMessage({ type: 'takeover-confirmed', tabId: requesterTabId, ownerTabId, requestId });
+}
+
+export function broadcastTakeoverReady(
+  ownerTabId: string,
+  requesterTabId: string,
+  requestId: string
+): void {
+  postMessage({ type: 'takeover-ready', tabId: ownerTabId, requesterTabId, requestId });
+}
+
+export function broadcastTakeoverFailed(
+  requesterTabId: string,
+  ownerTabId: string,
+  requestId: string
+): void {
+  postMessage({ type: 'takeover-failed', tabId: requesterTabId, ownerTabId, requestId });
+}
+
+export function requestSessionRelease(tabId: string, timeoutMs = 5000): Promise<boolean> {
+  const closeChannel = openSessionChannel();
+  const requestId = createTabId();
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (released: boolean) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      pendingSessionReleaseRequests.delete(requestId);
+      closeChannel();
+      resolve(released);
+    };
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+    pendingSessionReleaseRequests.set(requestId, { requesterTabId: tabId, finish });
+    broadcastSessionTakeoverRequest(tabId, requestId);
+  });
+}
+
+export function confirmSessionReleased(
+  requestId: string,
+  requesterTabId: string,
+  ownerTabId: string
+): void {
+  postMessage({
+    type: 'session-released',
+    requestId,
+    requesterTabId,
+    tabId: ownerTabId
+  });
+}
+
+export function onSessionTakeoverRequest(
+  handler: (requesterTabId: string, requestId: string) => void
+): () => void {
   return subscribeSessionMessages((message) => {
-    if (message.type !== 'session-release-request') return;
-    handler(message.tabId);
+    if (message.type !== 'session-takeover-request') return;
+    handler(message.tabId, message.requestId);
   });
 }
 
@@ -328,6 +407,8 @@ export function claimPresenceOwnership(tabId: string): Promise<() => void> {
     return presenceLockPromise;
   }
 
+  const closeChannel = channel ? undefined : openSessionChannel();
+  announcePresenceQuery(tabId);
   presenceLockPromise = new Promise<() => void>((resolve, reject) => {
     let notifyAcquired: ((release: () => void) => void) | undefined;
     let acquired = false;
@@ -351,6 +432,7 @@ export function claimPresenceOwnership(tabId: string): Promise<() => void> {
           announcePresenceRelease(tabId);
           if (presenceLockRelease === release) presenceLockRelease = null;
           presenceLockPromise = null;
+          closeChannel?.();
           unlock();
           if (import.meta.env.DEV)
             console.debug('[sessionLock] presence owner released', { tabId });
@@ -365,7 +447,10 @@ export function claimPresenceOwnership(tabId: string): Promise<() => void> {
       });
     void acquiredPromise.then(resolve, reject);
   }).finally(() => {
-    if (!presenceLockRelease) presenceLockPromise = null;
+    if (!presenceLockRelease) {
+      presenceLockPromise = null;
+      closeChannel?.();
+    }
   });
   return presenceLockPromise;
 }
@@ -433,6 +518,8 @@ export function claimGameplayOwnership(tabId: string): Promise<() => void> {
     return gameplayLockPromise;
   }
 
+  const closeChannel = channel ? undefined : openSessionChannel();
+  announceGameplayQuery(tabId);
   gameplayLockPromise = new Promise<() => void>((resolve, reject) => {
     let notifyAcquired: ((release: () => void) => void) | undefined;
     let acquired = false;
@@ -455,6 +542,7 @@ export function claimGameplayOwnership(tabId: string): Promise<() => void> {
           announceGameplayRelease(tabId);
           if (gameplayLockRelease === release) gameplayLockRelease = null;
           gameplayLockPromise = null;
+          closeChannel?.();
           unlock();
           if (import.meta.env.DEV)
             console.debug('[sessionLock] gameplay owner released', { tabId });
@@ -470,7 +558,10 @@ export function claimGameplayOwnership(tabId: string): Promise<() => void> {
       });
     void acquiredPromise.then(resolve, reject);
   }).finally(() => {
-    if (!gameplayLockRelease) gameplayLockPromise = null;
+    if (!gameplayLockRelease) {
+      gameplayLockPromise = null;
+      closeChannel?.();
+    }
   });
   return gameplayLockPromise;
 }

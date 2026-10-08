@@ -9,10 +9,15 @@ import {
   announcePresenceQuery,
   announcePresenceRelease,
   announcePresenceTakeover,
+  broadcastTakeoverAck,
+  broadcastTakeoverConfirmed,
+  broadcastTakeoverFailed,
+  broadcastTakeoverReady,
   broadcastGameplayEvent,
   broadcastPresenceUsers,
   broadcastSessionRefreshed,
-  broadcastSessionRelease,
+  broadcastSessionTakeoverDismissed,
+  broadcastSessionTakeoverRequest,
   claimPresenceOwnership,
   claimGameplayOwnership,
   getLastSessionRefreshAt,
@@ -21,6 +26,7 @@ import {
   openSessionChannel,
   releaseGameplayOwnership,
   releasePresenceOwnership,
+  requestSessionRelease,
   subscribeGameplayEvents,
   subscribeSessionMessages,
   type SessionMessage
@@ -66,6 +72,55 @@ describe('presence ownership lock', () => {
     const nextRelease = await claimPresenceOwnership('tab-2');
     expect(request).toHaveBeenCalledTimes(2);
     nextRelease();
+  });
+
+  it('announces ownership queries while waiting for Web Locks', async () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    const messages: unknown[] = [];
+    class MockBroadcastChannel {
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      constructor() {}
+
+      postMessage(message: unknown) {
+        messages.push(message);
+      }
+
+      close() {}
+    }
+    const request = vi.fn(
+      async (_name: string, _options: { mode: 'exclusive' }, callback: () => Promise<void>) =>
+        callback()
+    );
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request }
+    });
+
+    let presenceRelease: (() => void) | undefined;
+    let gameplayRelease: (() => void) | undefined;
+    try {
+      presenceRelease = await claimPresenceOwnership('presence-tab');
+      gameplayRelease = await claimGameplayOwnership('gameplay-tab');
+
+      expect(messages).toContainEqual({ type: 'presence-query', tabId: 'presence-tab' });
+      expect(messages).toContainEqual({ type: 'gameplay-query', tabId: 'gameplay-tab' });
+    } finally {
+      presenceRelease?.();
+      gameplayRelease?.();
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
   });
 
   it('replies directly to a presence-list-request with the cached user list', async () => {
@@ -188,6 +243,31 @@ describe('presence ownership lock', () => {
       dispatch({});
       dispatch({ type: 'session-refreshed', at: 100 });
       dispatch({ type: 'session-refreshed', at: Number.NaN });
+      dispatch({ type: 'session-takeover-dismissed', tabId: 'other-tab' });
+      dispatch({
+        type: 'takeover-ack',
+        tabId: 'owner-tab',
+        requesterTabId: 'requester-tab',
+        requestId: 'request'
+      });
+      dispatch({
+        type: 'takeover-confirmed',
+        tabId: 'requester-tab',
+        ownerTabId: 'owner-tab',
+        requestId: 'request'
+      });
+      dispatch({
+        type: 'takeover-ready',
+        tabId: 'owner-tab',
+        requesterTabId: 'requester-tab',
+        requestId: 'request'
+      });
+      dispatch({
+        type: 'takeover-failed',
+        tabId: 'requester-tab',
+        ownerTabId: 'owner-tab',
+        requestId: 'request'
+      });
       expect(getLastSessionRefreshAt()).toBe(100);
 
       dispatch({ type: 'presence-query', tabId: 'other-tab' });
@@ -217,6 +297,11 @@ describe('presence ownership lock', () => {
       broadcastPresenceUsers(['player']);
       broadcastGameplayEvent('game_message', { value: 2 });
       broadcastSessionRefreshed(200);
+      broadcastSessionTakeoverDismissed('requesting-tab');
+      broadcastTakeoverAck('owner-tab', 'requester-tab', 'request');
+      broadcastTakeoverConfirmed('requester-tab', 'owner-tab', 'request');
+      broadcastTakeoverReady('owner-tab', 'requester-tab', 'request');
+      broadcastTakeoverFailed('requester-tab', 'owner-tab', 'request');
 
       expect(gameplay).toHaveBeenCalledWith('game_message', { value: 1 });
       expect(logout).toHaveBeenCalledOnce();
@@ -225,7 +310,35 @@ describe('presence ownership lock', () => {
         event: 'game_message',
         payload: { value: 2 }
       });
-      expect(received).toHaveLength(16);
+      expect(received).toHaveLength(21);
+      expect(channel.messages).toContainEqual({
+        type: 'session-takeover-dismissed',
+        tabId: 'requesting-tab'
+      });
+      expect(channel.messages).toContainEqual({
+        type: 'takeover-ack',
+        tabId: 'owner-tab',
+        requesterTabId: 'requester-tab',
+        requestId: 'request'
+      });
+      expect(channel.messages).toContainEqual({
+        type: 'takeover-confirmed',
+        tabId: 'requester-tab',
+        ownerTabId: 'owner-tab',
+        requestId: 'request'
+      });
+      expect(channel.messages).toContainEqual({
+        type: 'takeover-ready',
+        tabId: 'owner-tab',
+        requesterTabId: 'requester-tab',
+        requestId: 'request'
+      });
+      expect(channel.messages).toContainEqual({
+        type: 'takeover-failed',
+        tabId: 'requester-tab',
+        ownerTabId: 'owner-tab',
+        requestId: 'request'
+      });
     } finally {
       unsubscribeMessages();
       unsubscribeLogout();
@@ -259,7 +372,7 @@ describe('presence ownership lock', () => {
     expect(() => release()).not.toThrow();
   });
 
-  it('broadcasts session release requests and releases the owner lock on request', async () => {
+  it('broadcasts session release requests without releasing ownership before confirmation', async () => {
     const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
       globalThis,
       'BroadcastChannel'
@@ -296,11 +409,12 @@ describe('presence ownership lock', () => {
     const releasePresence = await claimPresenceOwnership('owner-tab');
     const releaseGameplay = await claimGameplayOwnership('game-tab');
 
-    broadcastSessionRelease('owner-tab');
+    const requestId = broadcastSessionTakeoverRequest('owner-tab');
 
     expect(MockBroadcastChannel.instance.messages).toContainEqual({
-      type: 'session-release-request',
-      tabId: 'owner-tab'
+      type: 'session-takeover-request',
+      tabId: 'owner-tab',
+      requestId
     });
     expect(() => releasePresence()).not.toThrow();
     expect(() => releaseGameplay()).not.toThrow();
@@ -309,6 +423,62 @@ describe('presence ownership lock', () => {
       Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
     } else {
       Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+    }
+  });
+
+  it('waits for a matching session release confirmation', async () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      static instance: MockBroadcastChannel;
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+      readonly messages: unknown[] = [];
+
+      constructor() {
+        MockBroadcastChannel.instance = this;
+      }
+
+      postMessage(message: unknown) {
+        this.messages.push(message);
+      }
+
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+
+    try {
+      const pendingRelease = requestSessionRelease('requester-tab', 1000);
+      const request = MockBroadcastChannel.instance.messages.find(
+        (message): message is Extract<SessionMessage, { type: 'session-takeover-request' }> =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          message.type === 'session-takeover-request'
+      );
+      expect(request).toBeDefined();
+      if (!request) throw new Error('Session release request was not broadcast');
+
+      MockBroadcastChannel.instance.onmessage?.({
+        data: {
+          type: 'session-released',
+          requestId: request.requestId,
+          requesterTabId: request.tabId,
+          tabId: 'owner-tab'
+        }
+      } as MessageEvent<SessionMessage>);
+
+      await expect(pendingRelease).resolves.toBe(true);
+    } finally {
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
     }
   });
 
@@ -350,7 +520,7 @@ describe('presence ownership lock', () => {
 
       const dispatchReleaseRequest = (tabId: string) =>
         MockBroadcastChannel.instance.onmessage?.({
-          data: { type: 'session-release-request', tabId }
+          data: { type: 'session-takeover-request', tabId, requestId: 'request-id' }
         } as MessageEvent<SessionMessage>);
 
       expect(() => dispatchReleaseRequest('unknown-tab')).not.toThrow();
