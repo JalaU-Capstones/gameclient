@@ -120,6 +120,26 @@ describe('bootstrapSession', () => {
     expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 
+  it('refreshes a new token after the bootstrap cache is cleared', async () => {
+    await expect(bootstrapSession()).resolves.toEqual({
+      accessToken: 'access-token',
+      user
+    });
+    clearBootstrapSessionCache();
+    testTime += 31_000;
+    vi.spyOn(Date, 'now').mockReturnValue(testTime);
+
+    mocks.get.mockClear();
+    mocks.refresh.mockClear();
+    await expect(bootstrapSession()).resolves.toEqual({
+      accessToken: 'access-token',
+      user
+    });
+
+    expect(mocks.get).toHaveBeenCalledOnce();
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
   it('does not broadcast logout for a transient bootstrap error', async () => {
     mocks.get.mockRejectedValue(new NetworkError());
 

@@ -108,14 +108,14 @@ async function bootstrap(generation: number): Promise<BootstrapResult> {
 export function bootstrapSession(): Promise<BootstrapResult> {
   if (!inFlight) {
     const generation = sessionGeneration;
-    inFlight = bootstrap(generation)
-      .then((result) => {
-        ensureSessionGeneration(generation);
-        return result;
-      })
-      .finally(() => {
-        inFlight = null;
-      });
+    const request = bootstrap(generation).then((result) => {
+      ensureSessionGeneration(generation);
+      return result;
+    });
+    const trackedRequest = request.finally(() => {
+      if (inFlight === trackedRequest) inFlight = null;
+    });
+    inFlight = trackedRequest;
   }
   return inFlight;
 }
@@ -154,5 +154,6 @@ export function handleAuthFailure(
 export function clearBootstrapSessionCache(): void {
   sessionGeneration += 1;
   localAccessToken = '';
+  inFlight = null;
   setLastPresenceToken(null);
 }
