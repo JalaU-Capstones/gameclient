@@ -16,7 +16,8 @@
   import {
     globalGameplaysClient,
     globalPresenceClient,
-    requestPresenceReconnect
+    requestPresenceReconnect,
+    standbyMode
   } from '$lib/stores/ws';
   import { currentUser } from '$lib/stores/session';
   import type { WebSocketClient } from '$lib/api/ws';
@@ -210,6 +211,7 @@
           gameplaysClient.on(
             'auth_failed',
             (payload: { code?: number; reason?: string } | undefined) => {
+              if (payload?.code === 4409) return;
               const failure =
                 payload?.code === 4401 || payload?.reason === 'auth_error'
                   ? new ApiError('Gameplay authentication failed', 401, 'AUTH_FAILED')
@@ -235,12 +237,14 @@
   });
 
   function handleInvite(userId: string) {
+    if ($standbyMode) return;
     sounds.play('click');
     waitingForAccept = true;
     gameplaysClient?.send('create_game', { guest_id: userId });
   }
 
   function handleAccept() {
+    if ($standbyMode) return;
     if (!incomingInvite) return;
     sounds.play('click');
     isSubmitting = true;
@@ -248,6 +252,7 @@
   }
 
   function handleReject() {
+    if ($standbyMode) return;
     if (!incomingInvite) return;
     sounds.play('click');
     gameplaysClient?.send('reject_invitation', { game_id: incomingInvite.game_id });
@@ -257,6 +262,7 @@
     setTimeout(() => (error = ''), 3000);
   }
   function handleOpenHistory() {
+    if ($standbyMode) return;
     sounds.play('click');
     goto(resolve('/history'));
   }
@@ -269,6 +275,7 @@
   <div class="flex flex-wrap justify-center gap-4">
     <button
       type="button"
+      disabled={$standbyMode}
       class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
       onclick={handleOpenHistory}
     >
@@ -305,6 +312,7 @@
               <span class="text-xl font-mono truncate mr-4">{user.name}</span>
               <button
                 class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+                disabled={$standbyMode}
                 onclick={() => handleInvite(user.id)}
               >
                 Invite
@@ -356,14 +364,14 @@
 
         <div class="flex gap-4">
           <button
-            disabled={isSubmitting}
+            disabled={isSubmitting || $standbyMode}
             onclick={handleReject}
             class="flex-1 py-3 px-4 rounded-full border border-[var(--text-muted)] text-[var(--text-muted)] hover:bg-[var(--text-muted)] hover:text-[var(--bg)] transition uppercase tracking-widest text-sm"
           >
             Decline
           </button>
           <button
-            disabled={isSubmitting}
+            disabled={isSubmitting || $standbyMode}
             onclick={handleAccept}
             class="flex-1 py-3 px-4 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition uppercase tracking-widest text-sm shadow-[var(--glow-cyan)]"
           >

@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   const sessionMessageHandlers = new Set<
     (message: { type: string; userIds?: string[]; tabId?: string }) => void
   >();
+  let standbyValue = false;
+  const standbySubscribers = new Set<(value: boolean) => void>();
   let presenceState = 'disconnected';
   let presenceAlive = false;
   const presenceSubscribers = new Set<(state: string) => void>();
@@ -22,6 +24,17 @@ const mocks = vi.hoisted(() => {
     presenceHandlers,
     gameplayHandlers,
     sessionMessageHandlers,
+    standbyMode: {
+      subscribe: (subscriber: (value: boolean) => void) => {
+        subscriber(standbyValue);
+        standbySubscribers.add(subscriber);
+        return () => standbySubscribers.delete(subscriber);
+      }
+    },
+    setStandbyMode: (value: boolean) => {
+      standbyValue = value;
+      standbySubscribers.forEach((subscriber) => subscriber(value));
+    },
     requestPresenceReconnect: vi.fn(),
     announcePresenceListRequest: vi.fn(),
     getPresenceClient: vi.fn(),
@@ -88,6 +101,7 @@ vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$lib/stores/ws', () => ({
+  standbyMode: mocks.standbyMode,
   globalPresenceClient: {
     getOrCreate: mocks.getPresenceClient,
     disconnect: mocks.presenceClient.disconnect
@@ -144,6 +158,7 @@ describe('Lobby page', () => {
     mocks.gameplayClient.on.mockClear();
     mocks.setPresenceState('disconnected');
     mocks.setPresenceAlive(false);
+    mocks.setStandbyMode(false);
   });
 
   it('subscribes to presence without owning or connecting the socket', async () => {
@@ -202,7 +217,7 @@ describe('Lobby page', () => {
       );
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(screen.getByText('Bob')).toBeInTheDocument();
+      expect(screen.getAllByText('Bob')).not.toHaveLength(0);
       expect(screen.queryByText('Loading players...')).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -247,6 +262,29 @@ describe('Lobby page', () => {
 
     expect(mocks.gameplayClient.send).toHaveBeenCalledWith('create_game', { guest_id: 'bob' });
     expect(screen.getByText('Waiting for opponent...')).toBeInTheDocument();
+  });
+
+  it('disables lobby actions while standby still receives presence updates', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.gameplayHandlers.has('invitation_received')).toBe(true));
+    mocks.setStandbyMode(true);
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'presence-users', userIds: ['bob'] })
+    );
+
+    expect(await screen.findByRole('button', { name: 'Invite' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'History' })).toBeDisabled();
+
+    emit(mocks.gameplayHandlers, 'invitation_received', {
+      game_id: 'game-1',
+      host: { id: 'bob', name: 'Bob' }
+    });
+    expect(await screen.findByRole('button', { name: 'Accept' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+    expect(mocks.gameplayClient.send).not.toHaveBeenCalledWith('create_game', {
+      guest_id: 'bob'
+    });
+    expect(screen.getAllByText('Bob')).not.toHaveLength(0);
   });
 
   it('accepts an invitation and navigates to the accepted game', async () => {
