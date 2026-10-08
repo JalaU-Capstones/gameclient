@@ -9,27 +9,31 @@ describe('SessionConflictModal', () => {
     render(SessionConflictModal, {
       props: {
         onTakeover: vi.fn(async () => undefined),
-        onDismiss: vi.fn()
+        onDismiss: vi.fn(),
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
     expect(screen.getByRole('dialog', { name: 'Session already active' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use this tab' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue here' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stay in original tab' })).toBeInTheDocument();
   });
 
-  it('clicking Use this tab invokes onTakeover', async () => {
+  it('clicking Continue here invokes onTakeover', async () => {
     const user = userEvent.setup();
     const onTakeover = vi.fn(async () => undefined);
 
     render(SessionConflictModal, {
       props: {
         onTakeover,
-        onDismiss: vi.fn()
+        onDismiss: vi.fn(),
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
-    await user.click(screen.getByRole('button', { name: 'Use this tab' }));
+    await user.click(screen.getByRole('button', { name: 'Continue here' }));
 
     expect(onTakeover).toHaveBeenCalledOnce();
   });
@@ -41,11 +45,13 @@ describe('SessionConflictModal', () => {
     render(SessionConflictModal, {
       props: {
         onTakeover: vi.fn(async () => undefined),
-        onDismiss
+        onDismiss,
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await user.click(screen.getByRole('button', { name: 'Stay in original tab' }));
 
     expect(onDismiss).toHaveBeenCalledOnce();
   });
@@ -60,18 +66,51 @@ describe('SessionConflictModal', () => {
         })
     );
 
-    render(SessionConflictModal, {
+    const view = render(SessionConflictModal, {
       props: {
         onTakeover,
-        onDismiss: vi.fn()
+        onDismiss: vi.fn(),
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
-    const button = screen.getByRole('button', { name: 'Use this tab' });
+    const button = screen.getByRole('button', { name: 'Continue here' });
     await user.click(button);
+    await view.rerender({
+      onTakeover,
+      onDismiss: vi.fn(),
+      isTakingOver: true,
+      takeoverError: ''
+    });
 
-    expect(screen.getByRole('button', { name: 'Using this tab…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Transferring session…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stay in original tab' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Waiting for the original tab to release ownership'
+    );
     resolveTakeover?.();
+  });
+
+  it('keeps dismissal available during automatic retries', async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    render(SessionConflictModal, {
+      props: {
+        onTakeover: vi.fn(async () => undefined),
+        onDismiss,
+        isTakingOver: false,
+        isRetrying: true,
+        takeoverError: ''
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'Transferring session…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stay in original tab' })).toBeEnabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Retrying the connection');
+
+    await user.click(screen.getByRole('button', { name: 'Stay in original tab' }));
+    expect(onDismiss).toHaveBeenCalledOnce();
   });
 
   it('dismisses on Escape and wraps keyboard focus within the dialog', async () => {
@@ -81,12 +120,14 @@ describe('SessionConflictModal', () => {
     render(SessionConflictModal, {
       props: {
         onTakeover: vi.fn(async () => undefined),
-        onDismiss
+        onDismiss,
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
-    const takeoverButton = screen.getByRole('button', { name: 'Use this tab' });
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
+    const takeoverButton = screen.getByRole('button', { name: 'Continue here' });
+    const dismissButton = screen.getByRole('button', { name: 'Stay in original tab' });
 
     expect(takeoverButton).toHaveFocus();
     await user.tab({ shift: true });
@@ -98,7 +139,7 @@ describe('SessionConflictModal', () => {
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
-  it('uses the latest dismiss callback while takeover is pending', async () => {
+  it('shows takeover errors and keeps dismissal disabled while takeover is pending', async () => {
     const user = userEvent.setup();
     let resolveTakeover!: () => void;
     const onDismiss = vi.fn();
@@ -108,21 +149,34 @@ describe('SessionConflictModal', () => {
           new Promise<void>((resolve) => {
             resolveTakeover = resolve;
           }),
-        onDismiss
+        onDismiss,
+        isTakingOver: false,
+        takeoverError: ''
       }
     });
 
-    await user.click(screen.getByRole('button', { name: 'Use this tab' }));
-    expect(screen.getByRole('button', { name: 'Using this tab…' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Continue here' }));
+    await view.rerender({
+      onTakeover: async () => undefined,
+      onDismiss,
+      isTakingOver: true,
+      takeoverError: 'Failed to take over session. Please try again.'
+    });
+    expect(screen.getByRole('button', { name: 'Transferring session…' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Failed to take over session. Please try again.'
+    );
 
     const latestDismiss = vi.fn();
     await view.rerender({
       onTakeover: async () => undefined,
-      onDismiss: latestDismiss
+      onDismiss: latestDismiss,
+      isTakingOver: true,
+      takeoverError: 'Failed to take over session. Please try again.'
     });
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await user.click(screen.getByRole('button', { name: 'Stay in original tab' }));
 
-    expect(latestDismiss).toHaveBeenCalledOnce();
+    expect(latestDismiss).not.toHaveBeenCalled();
     expect(onDismiss).not.toHaveBeenCalled();
     resolveTakeover();
   });
