@@ -31,7 +31,9 @@ describe('createWebSocketClient', () => {
       pingIntervalMs: 500
     });
     const authHandler = vi.fn();
+    const allEvents = vi.fn();
     client.on('auth_ok', authHandler);
+    client.onAny(allEvents);
 
     client.connect('token-123');
 
@@ -42,6 +44,7 @@ describe('createWebSocketClient', () => {
 
     await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
     expect(authHandler).toHaveBeenCalledWith({ user_id: 'u1' });
+    expect(allEvents).toHaveBeenCalledWith('auth_ok', { user_id: 'u1' });
   });
 
   it('closes with 4401 and does not reconnect on auth_error', async () => {
@@ -332,62 +335,214 @@ describe('createWebSocketClient', () => {
     expect(get(client.state)).toBe('disconnected');
   });
 
-  it.each(['session_replaced', 'session_already_active'])(
-    'does not reconnect after close code 4409 with reason %s',
-    async (reason) => {
-      const originalWebSocket = globalThis.WebSocket;
-      vi.useFakeTimers();
-      class MockWebSocket {
-        static readonly OPEN = 1;
-        static readonly CLOSING = 2;
-        static readonly CLOSED = 3;
-        static instances: MockWebSocket[] = [];
+  it('waits for the WebSocket close event before disconnectAndWait resolves', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instance: MockWebSocket;
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      private readonly listeners = new Set<EventListener>();
 
-        readyState = MockWebSocket.OPEN;
-        onopen: ((event: Event) => void) | null = null;
-        onmessage: ((event: MessageEvent) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        onclose: ((event: CloseEvent) => void) | null = null;
-        send = vi.fn();
-        close = vi.fn();
-
-        constructor() {
-          MockWebSocket.instances.push(this);
-        }
+      constructor() {
+        MockWebSocket.instance = this;
       }
 
-      vi.stubGlobal('WebSocket', MockWebSocket);
-      try {
-        const client = createWebSocketClient({
-          path: '/api/v2/ws/gameplays',
-          baseReconnectDelayMs: 1
-        });
-        const closeHandler = vi.fn();
-        client.on('closed', closeHandler);
-        client.connect('session-conflict-token');
+      send() {}
 
-        const socket = MockWebSocket.instances[0];
-        expect(socket).toBeDefined();
-        socket.onclose?.({ code: 4409, reason } as CloseEvent);
-        await vi.advanceTimersByTimeAsync(100);
+      close() {
+        this.readyState = MockWebSocket.CLOSING;
+      }
 
-        expect(closeHandler).toHaveBeenCalledWith({
-          code: 4409,
-          reason,
-          path: '/api/v2/ws/gameplays'
-        });
-        expect(MockWebSocket.instances).toHaveLength(1);
-        expect(get(client.state)).toBe('disconnected');
+      finishClose() {
+        this.readyState = MockWebSocket.CLOSED;
+        const event = new Event('close') as CloseEvent;
+        this.onclose?.(event);
+        this.listeners.forEach((listener) => listener(event));
+      }
 
-        client.disconnect();
-        expect(socket.close).not.toHaveBeenCalled();
-        expect(closeHandler).toHaveBeenCalledOnce();
-      } finally {
-        vi.useRealTimers();
-        vi.stubGlobal('WebSocket', originalWebSocket);
+      addEventListener(_type: string, listener: EventListener) {
+        this.listeners.add(listener);
+      }
+
+      removeEventListener(_type: string, listener: EventListener) {
+        this.listeners.delete(listener);
       }
     }
-  );
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createWebSocketClient({ path: '/api/v2/ws/gameplays' });
+      client.connect('handover-token');
+      const closing = client.disconnectAndWait();
+      let resolved = false;
+      void closing.then(() => {
+        resolved = true;
+      });
+
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+      MockWebSocket.instance.finishClose();
+      await closing;
+      expect(resolved).toBe(true);
+      expect(get(client.state)).toBe('disconnected');
+    } finally {
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('does not reconnect after close code 4409 when the session was replaced', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    vi.useFakeTimers();
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instances: MockWebSocket[] = [];
+
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn();
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    try {
+      const client = createWebSocketClient({
+        path: '/api/v2/ws/gameplays',
+        baseReconnectDelayMs: 1
+      });
+      const closeHandler = vi.fn();
+      const authFailedHandler = vi.fn();
+      client.on('closed', closeHandler);
+      client.on('auth_failed', authFailedHandler);
+      client.connect('session-conflict-token');
+
+      const socket = MockWebSocket.instances[0];
+      expect(socket).toBeDefined();
+      socket.onclose?.({ code: 4409, reason: 'session_replaced' } as CloseEvent);
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(closeHandler).toHaveBeenCalledWith({
+        code: 4409,
+        reason: 'session_replaced',
+        path: '/api/v2/ws/gameplays'
+      });
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(get(client.state)).toBe('disconnected');
+      expect(authFailedHandler).not.toHaveBeenCalled();
+
+      client.disconnect();
+      expect(socket.close).not.toHaveBeenCalled();
+      expect(closeHandler).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('waits for explicit user action after a session conflict', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    vi.useFakeTimers();
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instances: MockWebSocket[] = [];
+
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn();
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createWebSocketClient({ path: '/api/v2/ws/gameplays' });
+      const closed = vi.fn();
+      client.on('closed', closed);
+      client.connect('retry-token');
+
+      MockWebSocket.instances[0].readyState = MockWebSocket.CLOSED;
+      MockWebSocket.instances[0].onclose?.({
+        code: 4409,
+        reason: 'session_already_active'
+      } as CloseEvent);
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(closed).toHaveBeenCalledWith({
+        code: 4409,
+        reason: 'session_already_active',
+        path: '/api/v2/ws/gameplays'
+      });
+      expect(get(client.state)).toBe('disconnected');
+      client.disconnect();
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('blocks outgoing events while read-only mode is enabled', () => {
+    const originalWebSocket = globalThis.WebSocket;
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instances: MockWebSocket[] = [];
+
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn();
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createWebSocketClient({ path: '/api/v2/ws/gameplays' });
+      client.connect('read-only-token');
+      const socket = MockWebSocket.instances[0];
+      client.send('outgoing-action');
+      expect(socket.send).toHaveBeenCalledOnce();
+
+      client.setReadOnlyMode(true);
+      client.send('blocked-action');
+      expect(socket.send).toHaveBeenCalledOnce();
+
+      client.setReadOnlyMode(false);
+      client.send('reactivated-action');
+      expect(socket.send).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
 
   it('clears the heartbeat interval when a session conflict forcibly closes the socket', async () => {
     const originalWebSocket = globalThis.WebSocket;

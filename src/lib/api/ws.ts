@@ -12,14 +12,18 @@ export interface WebSocketClientOptions {
 }
 
 export type EventHandler<T = unknown> = (payload: T) => void;
+export type AnyEventHandler = (event: string, payload?: unknown) => void;
 
 export interface WebSocketClient {
   readonly state: Readable<ConnectionState>;
   isAlive(): boolean;
+  setReadOnlyMode(enabled: boolean): void;
   connect(token: string): void;
   disconnect(): void;
+  disconnectAndWait(timeoutMs?: number): Promise<void>;
   send(event: string, payload?: unknown): void;
   on<T = unknown>(event: string, handler: EventHandler<T>): () => void;
+  onAny(handler: AnyEventHandler): () => void;
 }
 
 const defaultWsCloseCode: WsCloseCode = 1000;
@@ -49,6 +53,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
 
   const state = writable<ConnectionState>('disconnected');
   const handlers = new Map<string, Set<EventHandler>>();
+  const anyEventHandlers = new Set<AnyEventHandler>();
 
   let socket: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -58,6 +63,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
   let token: string | null = null;
   let intentionalClose = false;
   let shouldReconnect = true;
+  let readOnlyMode = false;
   let lastSeenMessageAt = Date.now();
 
   const clearPing = () => {
@@ -92,10 +98,12 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
   const dispatchToHandlers = <T>(event: string, payload: T) => {
     const eventHandlers = handlers.get(event);
     if (!eventHandlers) {
+      anyEventHandlers.forEach((handler) => handler(event, payload));
       return;
     }
 
     eventHandlers.forEach((handler) => handler(payload));
+    anyEventHandlers.forEach((handler) => handler(event, payload));
   };
 
   const scheduleReconnect = () => {
@@ -274,6 +282,9 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
       clearAuthTimer();
       clearPing();
       if (import.meta.env.DEV) {
+        console.debug(
+          `[ws] closed code=${closeEvent.code} reason=${sanitizeDiagnosticText(closeEvent.reason) ?? ''}`
+        );
         console.debug('[ws] socket closed', path, {
           code: closeEvent.code,
           reason: sanitizeDiagnosticText(closeEvent.reason)
@@ -286,6 +297,18 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         return;
       }
 
+      if (closeEvent.code === 4409 && closeEvent.reason === 'session_already_active') {
+        dispatchToHandlers('closed', {
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          path
+        });
+        shouldReconnect = false;
+        setState('disconnected');
+        socket = null;
+        return;
+      }
+
       if (closeEvent.code === 4401 || closeEvent.code === 4408 || closeEvent.code === 4409) {
         shouldReconnect = false;
         dispatchToHandlers('closed', {
@@ -293,11 +316,13 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
           reason: closeEvent.reason || 'closed',
           path
         });
-        dispatchToHandlers('auth_failed', {
-          reason: closeEvent.reason || 'auth_failed',
-          code: closeEvent.code,
-          path
-        });
+        if (closeEvent.code !== 4409) {
+          dispatchToHandlers('auth_failed', {
+            reason: closeEvent.reason || 'auth_failed',
+            code: closeEvent.code,
+            path
+          });
+        }
         setState('disconnected');
         socket = null;
         return;
@@ -329,6 +354,9 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
     isAlive(): boolean {
       return socket?.readyState === WebSocket.OPEN;
     },
+    setReadOnlyMode(enabled: boolean): void {
+      readOnlyMode = enabled;
+    },
     connect(nextToken: string): void {
       connect(nextToken);
     },
@@ -340,8 +368,53 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
       teardown();
       setState('disconnected');
     },
+    disconnectAndWait(timeoutMs = 5_000): Promise<void> {
+      if (import.meta.env.DEV) console.debug('[ws] disconnect requested for', path);
+      intentionalClose = true;
+      shouldReconnect = false;
+      clearReconnect();
+      clearPing();
+      clearAuthTimer();
+      const currentSocket = socket;
+      if (!currentSocket || currentSocket.readyState === WebSocket.CLOSED) {
+        if (socket === currentSocket) socket = null;
+        setState('disconnected');
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve, reject) => {
+        let finished = false;
+        const finish = (error?: Error) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timeout);
+          currentSocket.removeEventListener('close', handleClose);
+          if (error) {
+            reject(error);
+            return;
+          }
+          if (socket === currentSocket) socket = null;
+          setState('disconnected');
+          resolve();
+        };
+        const handleClose = () => finish();
+        const timeout = setTimeout(
+          () => finish(new Error(`WebSocket close timed out for ${path}`)),
+          timeoutMs
+        );
+        currentSocket.addEventListener('close', handleClose, { once: true });
+        try {
+          if (currentSocket.readyState !== WebSocket.CLOSING) {
+            currentSocket.close(defaultWsCloseCode, 'session_handover');
+          }
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(`WebSocket close failed for ${path}`));
+        }
+      });
+    },
     send(event: string, payload?: unknown): void {
       if (import.meta.env.DEV) console.debug('[ws] send requested', path, event);
+      if (readOnlyMode) return;
       if (socket && socket.readyState !== WebSocket.OPEN) {
         if (socket.readyState !== WebSocket.CLOSING && socket.readyState !== WebSocket.CLOSED) {
           return;
@@ -376,6 +449,10 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
           handlers.delete(event);
         }
       };
+    },
+    onAny(handler: AnyEventHandler): () => void {
+      anyEventHandlers.add(handler);
+      return () => anyEventHandlers.delete(handler);
     }
   };
 }
