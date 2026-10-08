@@ -7,11 +7,24 @@ import GamePage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (payload?: never) => void>();
+  let standbyValue = false;
+  const standbySubscribers = new Set<(value: boolean) => void>();
   return {
     bootstrapSession: vi.fn(),
     get: vi.fn(),
     goto: vi.fn(),
     handlers,
+    standbyMode: {
+      subscribe: (subscriber: (value: boolean) => void) => {
+        subscriber(standbyValue);
+        standbySubscribers.add(subscriber);
+        return () => standbySubscribers.delete(subscriber);
+      }
+    },
+    setStandbyMode: (value: boolean) => {
+      standbyValue = value;
+      standbySubscribers.forEach((subscriber) => subscriber(value));
+    },
     play: vi.fn(),
     gameplayAlive: true,
     client: {
@@ -53,6 +66,7 @@ vi.mock('$lib/auth/bootstrap', async (importOriginal) => {
 vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$lib/stores/ws', () => ({
+  standbyMode: mocks.standbyMode,
   globalGameplaysClient: { getOrCreate: () => mocks.client }
 }));
 
@@ -106,6 +120,7 @@ describe('Game page', () => {
     mocks.client.connect.mockReset();
     mocks.play.mockReset();
     mocks.gameplayAlive = true;
+    mocks.setStandbyMode(false);
   });
 
   it('renders an empty board while game data is loading', () => {
@@ -173,6 +188,19 @@ describe('Game page', () => {
     });
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveTextContent('X');
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveClass('cell-symbol', 'cell-x');
+  });
+
+  it('disables game actions in standby mode', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+    mocks.setStandbyMode(true);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled());
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Cell 0 0' }));
+    expect(mocks.client.send).not.toHaveBeenCalledWith(
+      'play_move',
+      expect.objectContaining({ row: 0, col: 0 })
+    );
   });
 
   it('uses responsive board sizing and pixel-style symbol sizing on narrow screens', async () => {

@@ -7,7 +7,7 @@
   import { bootstrapSession, handleAuthFailure } from '$lib/auth/bootstrap';
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
   import { httpClient } from '$lib/api/client';
-  import { globalGameplaysClient } from '$lib/stores/ws';
+  import { globalGameplaysClient, standbyMode } from '$lib/stores/ws';
   import type { WebSocketClient } from '$lib/api/ws';
   import { currentUser } from '$lib/stores/session';
   import { userFacingMessage } from '$lib/errors/messages';
@@ -308,7 +308,7 @@
   });
 
   function playMove(row: number, col: number) {
-    if (!isMyTurn || board[row][col] !== 0 || isGameOver) return;
+    if ($standbyMode || !isMyTurn || board[row][col] !== 0 || isGameOver) return;
 
     board[row][col] = turn === hostUser?.id ? 1 : 2;
     board = [...board];
@@ -324,6 +324,7 @@
   }
 
   function handlePlayAgain() {
+    if ($standbyMode) return;
     const opponent = hostUser?.id === $currentUser?.id ? guestUser : hostUser;
     if (!opponent) {
       error = 'Opponent is not available';
@@ -336,12 +337,14 @@
   }
 
   function handleAcceptRematch() {
+    if ($standbyMode) return;
     if (!incomingInvite) return;
     sounds.play('click');
     gameplaysClient.send('accept_invitation', { game_id: incomingInvite.game_id });
   }
 
   function handleRejectRematch() {
+    if ($standbyMode) return;
     if (!incomingInvite) return;
     sounds.play('click');
     gameplaysClient.send('reject_invitation', { game_id: incomingInvite.game_id });
@@ -349,6 +352,7 @@
   }
 
   function goLobby() {
+    if ($standbyMode) return;
     goto(resolve('/lobby'));
   }
 </script>
@@ -453,7 +457,7 @@
               class:cell-x={cell === 1}
               class:cell-o={cell === 2}
               onclick={() => playMove(rIndex, cIndex)}
-              disabled={!isMyTurn || cell !== 0 || isGameOver}
+              disabled={$standbyMode || !isMyTurn || cell !== 0 || isGameOver}
               aria-label="Cell {rIndex} {cIndex}"
             >
               {#if cell === 1}
@@ -488,7 +492,7 @@
         <button
           class="w-full sm:w-auto px-8 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl hover:bg-[var(--neon-cyan)] hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-[var(--glow-cyan)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
           onclick={handlePlayAgain}
-          disabled={waitingForRematch}
+          disabled={waitingForRematch || $standbyMode}
         >
           {#if waitingForRematch}
             <span
@@ -502,6 +506,7 @@
 
         <button
           class="w-full sm:w-auto px-8 py-3 bg-[var(--cell)] border-2 border-[var(--neon-magenta)] text-[var(--neon-magenta)] rounded-xl hover:bg-[var(--neon-magenta)] hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-[var(--glow-magenta)] cursor-pointer active:scale-95"
+          disabled={$standbyMode}
           onclick={goLobby}
         >
           Return to Lobby
@@ -525,12 +530,14 @@
         <div class="flex gap-4 justify-center">
           <button
             class="flex-1 py-3 bg-[var(--cell)] border-2 border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-black font-bold uppercase tracking-wider rounded-xl shadow-[var(--glow-magenta)] transition-all cursor-pointer active:scale-95"
+            disabled={$standbyMode}
             onclick={handleAcceptRematch}
           >
             Accept
           </button>
           <button
             class="flex-1 py-3 bg-[var(--cell)] border-2 border-[var(--text-muted)] text-[var(--text-muted)] hover:bg-[var(--text-muted)] hover:text-black font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer active:scale-95"
+            disabled={$standbyMode}
             onclick={handleRejectRematch}
           >
             Decline
