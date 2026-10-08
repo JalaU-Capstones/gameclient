@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import { afterNavigate, goto } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -20,23 +21,31 @@
     globalPresenceClient,
     requestPresenceReconnect,
     setLastPresenceToken,
-    setPresenceReconnectRequest
+    setPresenceReconnectRequest,
+    standbyMode
   } from '$lib/stores/ws';
   import {
+    broadcastSessionTakeoverRequest,
     broadcastPresenceUsers,
-    broadcastSessionRelease,
+    broadcastSessionTakeoverDismissed,
+    broadcastTakeoverAck,
+    broadcastTakeoverConfirmed,
+    broadcastTakeoverFailed,
+    broadcastTakeoverReady,
     claimGameplayOwnership,
     claimPresenceOwnership,
     createTabId,
     onRemoteLogout,
-    onSessionReleaseRequest,
+    onSessionTakeoverRequest,
     openSessionChannel,
     releaseGameplayOwnership,
     releasePresenceOwnership,
-    subscribeSessionMessages
+    subscribeSessionMessages,
+    type SessionMessage
   } from '$lib/auth/sessionLock';
   import { userFacingMessage } from '$lib/errors/messages';
   import { resolveRedirect } from '$lib/auth/redirect';
+  import type { WebSocketClient } from '$lib/api/ws';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
@@ -47,19 +56,40 @@
   const PUBLIC_ROUTES = ['/login', '/register'];
 
   let { children } = $props();
+  let headerElement: HTMLElement | undefined = $state();
+  let mainElement: HTMLElement | undefined = $state();
   let isLeavingGame = $state(false);
   let authError = $state('');
   let sessionConflict = $state(false);
   let sessionReplaced = $state(false);
+  let isStandby = $state(false);
+  let takeoverError = $state('');
+  let isTakingOver = $state(false);
+  let isRetryingSession = $state(false);
   let sessionReplacedRef = false;
+  let takeoverSessionUpdated = false;
+  const shownCloseCodes = new SvelteSet<number>();
+  let genericConnectionAlertShown = false;
+  let takeoverAttempt = 0;
   let layoutMounted = false;
   let presenceStarting: Promise<void> | null = null;
   let presenceOwnerRelease: (() => void) | null = null;
   let gameplayOwnerRelease: (() => void) | null = null;
   let presenceClient: ReturnType<typeof globalPresenceClient.getOrCreate> | null = null;
   let presenceUnsubscribers: (() => void)[] = [];
+  const monitoredSocketClients = new WeakSet<object>();
+  const sessionConflictPaths = new SvelteSet<string>();
+  const sessionRetryingPaths = new SvelteSet<string>();
+  const socketMonitorUnsubscribers: (() => void)[] = [];
   let presenceRetryUsed = false;
   let presenceAccessToken = '';
+  let standbyOwnerTabId: string | null = null;
+  const pendingTakeoverRequesters = new SvelteMap<string, string>();
+  let takeoverHandshake: {
+    requestId: string;
+    acknowledgement: Promise<string | null>;
+    cancel: () => void;
+  } | null = null;
   const tabId = createTabId();
   let isPublicRoute = $derived(PUBLIC_ROUTES.includes($page.url.pathname));
   let canGoBack = $derived($navigationHistory.length >= 2 && navigationHistory.canGoBack());
@@ -89,6 +119,10 @@
   }
 
   function releaseAllPresenceAndGameplay() {
+    setPresenceReconnectRequest(null);
+    detachPresenceHandlers();
+    globalPresenceClient.disconnect();
+    globalGameplaysClient.disconnect();
     if (gameplayOwnerRelease && typeof releaseGameplayOwnership === 'function') {
       releaseGameplayOwnership();
       gameplayOwnerRelease = null;
@@ -97,10 +131,6 @@
       releasePresenceOwnership();
       presenceOwnerRelease = null;
     }
-    setPresenceReconnectRequest(null);
-    detachPresenceHandlers();
-    globalPresenceClient.disconnect();
-    globalGameplaysClient.disconnect();
   }
 
   function releaseAllLocalLocks() {
@@ -113,6 +143,17 @@
       presenceOwnerRelease = null;
     }
     setPresenceReconnectRequest(null);
+  }
+
+  function setStandbyMode(enabled: boolean) {
+    isStandby = enabled;
+    standbyMode.set(enabled);
+    setReadOnlyMode(enabled);
+  }
+
+  function setReadOnlyMode(enabled: boolean) {
+    globalPresenceClient.setReadOnlyMode(enabled);
+    globalGameplaysClient.setReadOnlyMode(enabled);
   }
 
   function releaseLayoutPresence(disconnect: boolean) {
@@ -134,7 +175,11 @@
       err,
       (message) => {
         authError = message;
-        if ((err instanceof NetworkError || err instanceof TimeoutError) && !presenceRetryUsed) {
+        if (
+          !isTakingOver &&
+          (err instanceof NetworkError || err instanceof TimeoutError) &&
+          !presenceRetryUsed
+        ) {
           presenceRetryUsed = true;
           setTimeout(() => void ensurePresence(true), 1200);
         }
@@ -143,8 +188,88 @@
     );
   }
 
-  async function ensurePresence(forceRefresh = false): Promise<void> {
-    if (sessionReplacedRef) return;
+  function clearConnectionAlerts() {
+    shownCloseCodes.clear();
+    genericConnectionAlertShown = false;
+    if (authError === 'Connection lost. Reconnecting…') authError = '';
+  }
+
+  function showConnectionAlertOnce(code?: number) {
+    if (code !== undefined && shownCloseCodes.has(code)) return;
+    if (code !== undefined) shownCloseCodes.add(code);
+    if (genericConnectionAlertShown) return;
+    genericConnectionAlertShown = true;
+    authError = 'Connection lost. Reconnecting…';
+  }
+
+  function monitorSocket(client: WebSocketClient, path: string): void {
+    if (monitoredSocketClients.has(client)) return;
+    monitoredSocketClients.add(client);
+    socketMonitorUnsubscribers.push(client.on('closed', handleWsClose));
+    socketMonitorUnsubscribers.push(
+      client.on('session_retrying', () => {
+        sessionRetryingPaths.add(path);
+        isRetryingSession = true;
+      })
+    );
+    socketMonitorUnsubscribers.push(
+      client.on('session_retry_exhausted', (event: { reason?: string } | undefined) => {
+        sessionRetryingPaths.delete(path);
+        isRetryingSession = sessionRetryingPaths.size > 0;
+        if (event?.reason === 'release_timeout') {
+          takeoverError = 'Session transfer timed out. Dismiss this tab or try again.';
+        }
+      })
+    );
+    socketMonitorUnsubscribers.push(
+      client.state.subscribe((state) => {
+        if (state === 'connected') {
+          clearConnectionAlerts();
+          sessionRetryingPaths.delete(path);
+          sessionConflictPaths.delete(path);
+          isRetryingSession = sessionRetryingPaths.size > 0;
+          if (sessionConflictPaths.size === 0 && !isTakingOver) sessionConflict = false;
+        }
+      })
+    );
+  }
+
+  function handleWsClose({
+    code,
+    reason,
+    path
+  }: { code?: number; reason?: string; path?: string } = {}) {
+    if (code !== 4409) {
+      if (!sessionConflict && !sessionReplaced && get(isAuthenticated)) {
+        showConnectionAlertOnce(code);
+      }
+      return;
+    }
+
+    if (reason === 'session_already_active') {
+      sessionConflict = true;
+      sessionReplaced = false;
+      if (path) sessionConflictPaths.add(path);
+      beginTakeoverRequest();
+    } else if (reason === 'session_replaced') {
+      takeoverHandshake?.cancel();
+      takeoverHandshake = null;
+      sessionReplaced = true;
+      setStandbyMode(true);
+      sessionConflict = false;
+      sessionReplacedRef = true;
+      isTakingOver = false;
+      takeoverAttempt += 1;
+    }
+  }
+
+  async function ensurePresence(
+    forceRefresh = false,
+    expectedTakeoverAttempt?: number
+  ): Promise<void> {
+    if (!isTakingOver && (sessionReplacedRef || sessionConflict)) return;
+    const isStaleTakeover = () =>
+      expectedTakeoverAttempt !== undefined && expectedTakeoverAttempt !== takeoverAttempt;
     if (import.meta.env.DEV) console.debug('[layout] ensurePresence start', { forceRefresh });
     if (presenceStarting) return presenceStarting;
     presenceStarting = (async () => {
@@ -153,6 +278,8 @@
           ? await bootstrapSession()
           : { accessToken: presenceAccessToken };
       const accessToken = result?.accessToken;
+      if (isStaleTakeover()) return;
+      if (isTakingOver && !takeoverSessionUpdated) return;
       if (import.meta.env.DEV)
         console.debug('[layout] presence bootstrap result', { accessToken: !!accessToken });
       if (!accessToken) throw new Error('No access token is available for the presence connection');
@@ -163,7 +290,12 @@
 
       if (!gameplayOwnerRelease && typeof claimGameplayOwnership === 'function') {
         const releaseGameplay = await claimGameplayOwnership(tabId);
-        if (!layoutMounted || !get(isAuthenticated)) {
+        if (
+          !layoutMounted ||
+          !get(isAuthenticated) ||
+          isStaleTakeover() ||
+          (isTakingOver && !takeoverSessionUpdated)
+        ) {
           releaseGameplay();
           return;
         }
@@ -172,20 +304,40 @@
 
       if (!presenceOwnerRelease) {
         const release = await claimPresenceOwnership(tabId);
-        if (!layoutMounted || !get(isAuthenticated)) {
+        if (
+          !layoutMounted ||
+          !get(isAuthenticated) ||
+          isStaleTakeover() ||
+          (isTakingOver && !takeoverSessionUpdated)
+        ) {
           release();
           return;
         }
         presenceOwnerRelease = release;
       }
 
+      const wasStandby = isStandby;
+      if (wasStandby || (sessionConflict && !isTakingOver)) {
+        setStandbyMode(false);
+        sessionReplaced = false;
+        sessionReplacedRef = false;
+        sessionConflict = false;
+        sessionConflictPaths.clear();
+      } else if (sessionConflict && isTakingOver) {
+        setReadOnlyMode(false);
+      }
+
       const client = globalPresenceClient.getOrCreate();
+      monitorSocket(client, '/api/v2/ws/presence');
       if (presenceClient !== client) {
         detachPresenceHandlers();
         presenceClient = client;
         presenceUnsubscribers.push(
           client.on('auth_ok', () => {
             if (import.meta.env.DEV) console.debug('[layout] presence auth_ok');
+            if (isTakingOver) {
+              takeoverError = '';
+            }
             client.send('list_online_users');
           })
         );
@@ -218,13 +370,14 @@
                 )
               );
             } else {
-              authError = 'Connection lost. Reconnecting…';
+              showConnectionAlertOnce();
             }
           })
         );
         presenceUnsubscribers.push(
           client.on('auth_failed', (payload: { code?: number; reason?: string } | undefined) => {
             if (!get(isAuthenticated)) return;
+            if (payload?.code === 4409) return;
             if (import.meta.env.DEV) {
               console.debug('[layout] presence auth_failed', {
                 code: payload?.code,
@@ -245,10 +398,15 @@
         if (import.meta.env.DEV) console.debug('[layout] connecting presence');
         client.connect(accessToken);
       }
+      if (wasStandby) {
+        const gameplayClient = globalGameplaysClient.getOrCreate();
+        monitorSocket(gameplayClient, '/api/v2/ws/gameplays');
+        if (!gameplayClient.isAlive()) gameplayClient.connect(accessToken);
+      }
     })()
       .catch((err: unknown) => {
         console.error('[layout] ensurePresence failure', err);
-        retryPresenceAfterFailure(err);
+        if (expectedTakeoverAttempt === undefined) retryPresenceAfterFailure(err);
       })
       .finally(() => {
         if (import.meta.env.DEV)
@@ -258,15 +416,196 @@
     return presenceStarting;
   }
 
+  function waitForSocketAuth(client: WebSocketClient, timeoutMs = 15_000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let unsubscribeAuth = () => {};
+      let unsubscribeRetry = () => {};
+      let unsubscribeFailure = () => {};
+      const finish = (error?: Error) => {
+        clearTimeout(timeout);
+        unsubscribeAuth();
+        unsubscribeRetry();
+        unsubscribeFailure();
+        if (error) reject(error);
+        else resolve();
+      };
+      const timeout = setTimeout(() => {
+        finish(new TimeoutError('WebSocket authentication timed out during session takeover'));
+      }, timeoutMs);
+      unsubscribeAuth = client.on('auth_ok', () => finish());
+      unsubscribeRetry = client.on(
+        'session_retry_exhausted',
+        (event: { path?: string; reason?: string } | undefined) =>
+          finish(
+            event?.reason === 'release_timeout'
+              ? new TimeoutError('Timed out waiting for the active tab to release')
+              : new Error(`Session conflict retries exhausted for ${event?.path ?? 'WebSocket'}`)
+          )
+      );
+      unsubscribeFailure = client.on('auth_failed', () =>
+        finish(new Error('WebSocket authentication failed during session takeover'))
+      );
+    });
+  }
+
+  function waitForTakeoverSignal<
+    T extends Extract<SessionMessage, { type: 'takeover-ack' | 'takeover-ready' }>
+  >(
+    type: T['type'],
+    matches: (message: T) => boolean
+  ): {
+    promise: Promise<T | null>;
+    cancel: () => void;
+  } {
+    let settled = false;
+    let unsubscribe = () => {};
+    let resolveSignal: (signal: T | null) => void = () => {};
+    const promise = new Promise<T | null>((resolve) => {
+      resolveSignal = resolve;
+    });
+    const finish = (signal: T | null) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolveSignal(signal);
+    };
+    unsubscribe = subscribeSessionMessages((message) => {
+      if (message.type !== type) return;
+      const signal = message as T;
+      if (matches(signal)) finish(signal);
+    });
+    return { promise, cancel: () => finish(null) };
+  }
+
+  function beginTakeoverRequest() {
+    if (takeoverHandshake) return takeoverHandshake;
+    const requestId = createTabId();
+    const ackWaiter = waitForTakeoverSignal(
+      'takeover-ack',
+      (message) => message.requesterTabId === tabId && message.requestId === requestId
+    );
+    takeoverHandshake = {
+      requestId,
+      acknowledgement: ackWaiter.promise.then((message) => message?.tabId ?? null),
+      cancel: ackWaiter.cancel
+    };
+    broadcastSessionTakeoverRequest(tabId, requestId);
+    return takeoverHandshake;
+  }
+
   async function handleTakeover() {
-    broadcastSessionRelease(tabId);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    await authApi.takeoverSession();
-    releaseAllLocalLocks();
-    await claimPresenceOwnership(tabId);
-    await claimGameplayOwnership(tabId);
+    isTakingOver = true;
+    takeoverSessionUpdated = false;
+    takeoverError = '';
+    const attempt = ++takeoverAttempt;
+    let requestId = '';
+    let ownerTabId: string | null = null;
+    let takeoverReady = false;
+    let cancelReadyWait = () => {};
+    try {
+      const handshake = beginTakeoverRequest();
+      requestId = handshake.requestId;
+      ownerTabId = await handshake.acknowledgement;
+      if (!ownerTabId) throw new Error('The active tab did not acknowledge the takeover request');
+
+      const readyWait = waitForTakeoverSignal(
+        'takeover-ready',
+        (message) =>
+          message.requesterTabId === tabId &&
+          message.tabId === ownerTabId &&
+          message.requestId === requestId
+      );
+      cancelReadyWait = readyWait.cancel;
+      broadcastTakeoverConfirmed(tabId, ownerTabId, requestId);
+      const ready = await readyWait.promise;
+      if (!ready) throw new Error('The active tab did not complete the session handover');
+      takeoverReady = true;
+      cancelReadyWait = () => {};
+      takeoverHandshake = null;
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new TimeoutError('Session transfer timed out'));
+        }, 15_000);
+        void authApi
+          .takeoverSession()
+          .then(() => {
+            takeoverSessionUpdated = true;
+            resolve();
+          }, reject)
+          .finally(() => clearTimeout(timeout));
+      });
+      clearBootstrapSessionCache();
+      sessionReplacedRef = false;
+      releaseAllLocalLocks();
+      globalPresenceClient.disconnect();
+      globalGameplaysClient.disconnect();
+
+      const pendingPresenceStart = presenceStarting;
+      if (pendingPresenceStart) await pendingPresenceStart;
+      if (attempt !== takeoverAttempt) return;
+
+      const client = globalPresenceClient.getOrCreate();
+      const authenticated = waitForSocketAuth(client);
+      await ensurePresence(true, attempt);
+      await authenticated;
+
+      const accessToken = presenceAccessToken;
+      if (!accessToken) throw new Error('No access token is available after session takeover');
+      const gameplayClient = globalGameplaysClient.getOrCreate();
+      monitorSocket(gameplayClient, '/api/v2/ws/gameplays');
+      const gameplayAuthenticated = waitForSocketAuth(gameplayClient);
+      gameplayClient.connect(accessToken);
+      await gameplayAuthenticated;
+      sessionConflict = false;
+      sessionConflictPaths.clear();
+      sessionRetryingPaths.clear();
+      isRetryingSession = false;
+      sessionReplaced = false;
+    } catch (err) {
+      if (attempt !== takeoverAttempt) return;
+      takeoverAttempt += 1;
+      takeoverSessionUpdated = false;
+      takeoverHandshake?.cancel();
+      takeoverHandshake = null;
+      cancelReadyWait();
+      sessionConflict = true;
+      setStandbyMode(true);
+      sessionReplaced = false;
+      sessionReplacedRef = false;
+      releaseAllLocalLocks();
+      globalPresenceClient.disconnect();
+      globalGameplaysClient.disconnect();
+      if (ownerTabId && takeoverReady) {
+        broadcastTakeoverFailed(tabId, ownerTabId, requestId);
+      }
+      if (err instanceof TimeoutError) {
+        console.error('[layout] Takeover timed out — returning to original tab as active', err);
+      } else {
+        console.error('[layout] session takeover failed', err);
+      }
+      takeoverError =
+        err instanceof TimeoutError
+          ? 'Session transfer timed out. The original tab is active again.'
+          : 'Failed to take over session. Please try again.';
+    } finally {
+      isTakingOver = false;
+    }
+  }
+
+  function handleConflictDismiss() {
+    takeoverAttempt += 1;
+    takeoverHandshake?.cancel();
+    takeoverHandshake = null;
     sessionConflict = false;
-    await ensurePresence();
+    sessionReplaced = false;
+    sessionReplacedRef = false;
+    releaseAllLocalLocks();
+    sessionRetryingPaths.clear();
+    isRetryingSession = false;
+    broadcastSessionTakeoverDismissed(tabId);
+    setStandbyMode(true);
+    void ensurePresence();
   }
 
   async function handleBack() {
@@ -335,6 +674,7 @@
       }
     };
     const onVisibilityChange = () => {
+      if (isTakingOver) return;
       if (import.meta.env.DEV)
         console.debug('[layout] visibilitychange', {
           state: document.visibilityState,
@@ -354,6 +694,8 @@
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onBeforeUnload);
     document.addEventListener('visibilitychange', onVisibilityChange);
+    monitorSocket(globalPresenceClient.getOrCreate(), '/api/v2/ws/presence');
+    monitorSocket(globalGameplaysClient.getOrCreate(), '/api/v2/ws/gameplays');
     return () => {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
@@ -366,6 +708,9 @@
   onMount(() => {
     const closeChannel = openSessionChannel();
     const unsubscribe = onRemoteLogout(() => {
+      setStandbyMode(false);
+      sessionReplaced = false;
+      sessionConflict = false;
       detachPresenceHandlers();
       globalPresenceClient.disconnect();
       releaseLayoutPresence(false);
@@ -375,19 +720,62 @@
       navigationHistory.reset();
       void goto(resolve('/login'));
     });
-    const unsubscribeSessionRelease = onSessionReleaseRequest((requesterTabId) => {
+    const unsubscribeSessionRelease = onSessionTakeoverRequest((requesterTabId, requestId) => {
       if (requesterTabId === tabId) return;
-      if (presenceOwnerRelease && presenceClient?.isAlive()) {
-        globalPresenceClient.disconnect();
-        releaseLayoutPresence(false);
-      }
-      if (gameplayOwnerRelease) {
-        globalGameplaysClient.disconnect();
-      }
-      releaseAllLocalLocks();
+      if (!presenceOwnerRelease && !gameplayOwnerRelease) return;
+      pendingTakeoverRequesters.set(requestId, requesterTabId);
+      broadcastTakeoverAck(tabId, requesterTabId, requestId);
     });
     const unsubscribeMessages = subscribeSessionMessages((message) => {
-      if (message.type === 'presence-list-request') {
+      if (message.type === 'takeover-confirmed' && message.ownerTabId === tabId) {
+        if (pendingTakeoverRequesters.get(message.requestId) !== message.tabId) return;
+        sessionReplaced = true;
+        setStandbyMode(true);
+        sessionConflict = false;
+        sessionReplacedRef = true;
+        isTakingOver = false;
+        takeoverAttempt += 1;
+        authError = '';
+        void (async () => {
+          const closeResults = await Promise.allSettled([
+            globalPresenceClient.getOrCreate().disconnectAndWait(),
+            globalGameplaysClient.getOrCreate().disconnectAndWait()
+          ]);
+          const closeFailure = closeResults.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected'
+          );
+          if (closeFailure) throw closeFailure.reason;
+
+          detachPresenceHandlers();
+          releaseAllLocalLocks();
+          globalPresenceClient.disconnect();
+          globalGameplaysClient.disconnect();
+          broadcastTakeoverReady(tabId, message.tabId, message.requestId);
+        })().catch((error: unknown) => {
+          sessionReplaced = false;
+          sessionReplacedRef = false;
+          setStandbyMode(false);
+          console.error('[layout] failed to release session ownership', error);
+        });
+      } else if (
+        message.type === 'takeover-failed' &&
+        message.ownerTabId === tabId &&
+        pendingTakeoverRequesters.get(message.requestId) === message.tabId
+      ) {
+        pendingTakeoverRequesters.delete(message.requestId);
+        sessionReplaced = false;
+        sessionReplacedRef = false;
+        sessionConflict = false;
+        void ensurePresence(true);
+      } else if (
+        (message.type === 'presence-owner' || message.type === 'gameplay-owner') &&
+        message.tabId !== tabId
+      ) {
+        sessionConflict = true;
+        setReadOnlyMode(true);
+        sessionReplaced = false;
+        beginTakeoverRequest();
+      } else if (message.type === 'presence-list-request') {
         if (import.meta.env.DEV) {
           console.debug('[layout] presence-list-request received', {
             hasOwner: !!presenceOwnerRelease
@@ -396,46 +784,44 @@
         if (presenceOwnerRelease !== null && presenceClient?.isAlive()) {
           presenceClient.send('list_online_users');
         }
+      } else if (message.type === 'presence-takeover' && message.tabId !== tabId) {
+        standbyOwnerTabId = message.tabId;
+      } else if (
+        message.type === 'presence-release' &&
+        message.tabId === standbyOwnerTabId &&
+        isStandby
+      ) {
+        standbyOwnerTabId = null;
+        sessionReplaced = false;
+        sessionReplacedRef = false;
+        sessionConflict = false;
+        void ensurePresence(true);
+      } else if (
+        message.type === 'session-takeover-dismissed' &&
+        message.tabId !== tabId &&
+        (presenceOwnerRelease !== null || gameplayOwnerRelease !== null)
+      ) {
+        for (const [requestId, requesterTabId] of pendingTakeoverRequesters) {
+          if (requesterTabId === message.tabId) pendingTakeoverRequesters.delete(requestId);
+        }
+        sessionConflict = false;
+        sessionConflictPaths.clear();
+        sessionRetryingPaths.clear();
+        isRetryingSession = false;
       }
     });
-    const unsubscribeClosed = globalPresenceClient
-      .getOrCreate()
-      .on('closed', (payload: { code?: number; reason?: string } | undefined) => {
-        const { code, reason } = payload ?? {};
-        if (code === 4409) {
-          if (reason === 'session_already_active') {
-            sessionConflict = true;
-          } else if (reason === 'session_replaced') {
-            sessionReplaced = true;
-            sessionReplacedRef = true;
-          }
-        }
-      });
-    const unsubscribeGameplayClosed = globalGameplaysClient
-      .getOrCreate()
-      .on('closed', (payload: { code?: number; reason?: string } | undefined) => {
-        const { code, reason } = payload ?? {};
-        if (code === 4409) {
-          if (reason === 'session_already_active') {
-            sessionConflict = true;
-          } else if (reason === 'session_replaced') {
-            sessionReplaced = true;
-            sessionReplacedRef = true;
-          }
-        }
-      });
     return () => {
       unsubscribe();
       unsubscribeSessionRelease();
       unsubscribeMessages();
-      unsubscribeClosed();
-      unsubscribeGameplayClosed();
       closeChannel();
     };
   });
 
   onDestroy(() => {
     layoutMounted = false;
+    socketMonitorUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    socketMonitorUnsubscribers.length = 0;
     releasePresenceOwnership();
     presenceOwnerRelease = null;
     setPresenceReconnectRequest(null);
@@ -471,6 +857,7 @@
     }
     if (!$isHydrated) return;
     if (!$isAuthenticated) {
+      setStandbyMode(false);
       releaseLayoutPresence(true);
       presenceAccessToken = '';
       setLastPresenceToken(null);
@@ -520,6 +907,12 @@
     const destination = resolveRedirect(redirectParam);
     goto(resolve(destination));
   });
+
+  $effect(() => {
+    const isInteractionBlocked = isStandby || sessionConflict;
+    if (headerElement) headerElement.inert = isInteractionBlocked;
+    if (mainElement) mainElement.inert = isInteractionBlocked;
+  });
 </script>
 
 <svelte:head>
@@ -527,7 +920,14 @@
 </svelte:head>
 
 <div class="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] transition-colors duration-200">
-  <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+  {#if isStandby}
+    <SessionReplacedBanner />
+  {/if}
+  <header
+    bind:this={headerElement}
+    class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5"
+    inert={isStandby || sessionConflict}
+  >
     <div class="flex flex-col">
       <GameTitle text="TIC TAC TOE" />
       {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
@@ -542,7 +942,7 @@
         <button
           type="button"
           onclick={handleBack}
-          disabled={isLeavingGame}
+          disabled={isLeavingGame || isStandby || sessionConflict}
           class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
           data-testid="back-button"
         >
@@ -553,22 +953,30 @@
         <button
           type="button"
           onclick={performLogout}
+          disabled={isStandby || sessionConflict}
           class="rounded-full border border-[var(--neon-magenta)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-magenta)] transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95"
           data-testid="logout-button"
         >
           Logout
         </button>
       {/if}
-      <ThemeToggle />
+      <ThemeToggle disabled={isStandby || sessionConflict} />
     </div>
   </header>
   {#if sessionConflict}
-    <SessionConflictModal onTakeover={handleTakeover} onDismiss={() => (sessionConflict = false)} />
+    <SessionConflictModal
+      onTakeover={handleTakeover}
+      onDismiss={handleConflictDismiss}
+      {isTakingOver}
+      isRetrying={isRetryingSession}
+      {takeoverError}
+    />
   {/if}
-  {#if sessionReplaced}
-    <SessionReplacedBanner />
-  {/if}
-  <main class="mx-auto max-w-6xl px-6 pb-10">
+  <main
+    bind:this={mainElement}
+    class="mx-auto max-w-6xl px-6 pb-10"
+    inert={isStandby || sessionConflict}
+  >
     {#if authError}
       <div
         class="mb-4 rounded-lg border border-amber-500/60 bg-amber-500/10 p-3 text-amber-400"

@@ -24,6 +24,13 @@ const mocks = vi.hoisted(() => ({
   resolve: vi.fn((path: string) => path),
   login: vi.fn(),
   logout: vi.fn(),
+  takeoverSession: vi.fn(),
+  broadcastSessionTakeoverRequest: vi.fn(),
+  broadcastTakeoverAck: vi.fn(),
+  broadcastTakeoverConfirmed: vi.fn(),
+  broadcastTakeoverReady: vi.fn(),
+  broadcastTakeoverFailed: vi.fn(),
+  broadcastSessionTakeoverDismissed: vi.fn(),
   play: vi.fn(),
   unlock: vi.fn(),
   afterNavigateCallbacks: [] as Array<
@@ -32,7 +39,15 @@ const mocks = vi.hoisted(() => ({
   subscribers: [] as Array<(value: PageSnapshot) => void>,
   gameplayConnected: false,
   gameplayHandlers: new Map<string, (payload?: unknown) => void>(),
-  sessionMessageHandlers: new Set<(message: { type: string }) => void>(),
+  sessionMessageHandlers: new Set<
+    (message: {
+      type: string;
+      tabId?: string;
+      requesterTabId?: string;
+      ownerTabId?: string;
+      requestId?: string;
+    }) => void
+  >(),
   presenceHandlers: new Map<string, (payload?: unknown) => void>(),
   presenceAlive: false,
   presenceConnect: vi.fn(),
@@ -47,6 +62,21 @@ const mocks = vi.hoisted(() => ({
   bootstrap: vi.fn(),
   presenceDisconnect: vi.fn(),
   gameplayDisconnect: vi.fn(),
+  standbyMode: (() => {
+    let value = false;
+    const subscribers = new Set<(nextValue: boolean) => void>();
+    return {
+      subscribe: (subscriber: (nextValue: boolean) => void) => {
+        subscriber(value);
+        subscribers.add(subscriber);
+        return () => subscribers.delete(subscriber);
+      },
+      set: (nextValue: boolean) => {
+        value = nextValue;
+        subscribers.forEach((subscriber) => subscriber(value));
+      }
+    };
+  })(),
   gameplayClient: {
     state: {
       subscribe: (fn: (value: string) => void) => {
@@ -58,13 +88,28 @@ const mocks = vi.hoisted(() => ({
       mocks.gameplayHandlers.set(event, handler);
       return () => mocks.gameplayHandlers.delete(event);
     }),
+    isAlive: () => mocks.gameplayConnected,
+    connect: vi.fn(),
+    disconnectAndWait: vi.fn(async () => undefined),
+    setReadOnlyMode: vi.fn(),
     send: vi.fn()
   },
   presenceClient: {
+    state: {
+      subscribe: (fn: (value: string) => void) => {
+        fn(mocks.presenceAlive ? 'connected' : 'disconnected');
+        return () => {};
+      }
+    },
     isAlive: () => mocks.presenceAlive,
     connect: vi.fn(),
+    disconnectAndWait: vi.fn(async () => undefined),
+    setReadOnlyMode: vi.fn(),
     send: vi.fn(),
-    on: vi.fn()
+    on: vi.fn((event: string, handler: (payload?: unknown) => void) => {
+      mocks.presenceHandlers.set(event, handler);
+      return () => mocks.presenceHandlers.delete(event);
+    })
   }
 }));
 
@@ -144,11 +189,24 @@ vi.mock('$lib/auth/sessionLock', () => ({
   releaseGameplayOwnership: mocks.releaseGameplayOwnership,
   announcePresenceRelease: vi.fn(),
   broadcastPresenceUsers: mocks.broadcastPresenceUsers,
+  broadcastSessionTakeoverDismissed: mocks.broadcastSessionTakeoverDismissed,
   broadcastLogout: vi.fn(),
-  broadcastSessionRelease: vi.fn(),
-  onSessionReleaseRequest: (handler: (requesterTabId: string) => void) => {
-    const callback = (message: { type: string; tabId?: string }) => {
-      if (message.type === 'session-release-request' && message.tabId) handler(message.tabId);
+  broadcastSessionTakeoverRequest: mocks.broadcastSessionTakeoverRequest,
+  broadcastTakeoverAck: mocks.broadcastTakeoverAck,
+  broadcastTakeoverConfirmed: mocks.broadcastTakeoverConfirmed,
+  broadcastTakeoverReady: mocks.broadcastTakeoverReady,
+  broadcastTakeoverFailed: mocks.broadcastTakeoverFailed,
+  onSessionTakeoverRequest: (handler: (requesterTabId: string, requestId: string) => void) => {
+    const callback = (message: {
+      type: string;
+      tabId?: string;
+      requesterTabId?: string;
+      ownerTabId?: string;
+      requestId?: string;
+    }) => {
+      if (message.type === 'session-takeover-request' && message.tabId && message.requestId) {
+        handler(message.tabId, message.requestId);
+      }
     };
     mocks.sessionMessageHandlers.add(callback);
     return () => mocks.sessionMessageHandlers.delete(callback);
@@ -169,7 +227,8 @@ vi.mock('$lib/auth/sessionLock', () => ({
 vi.mock('$lib/api/auth', () => ({
   authApi: {
     login: mocks.login,
-    logout: mocks.logout
+    logout: mocks.logout,
+    takeoverSession: mocks.takeoverSession
   }
 }));
 
@@ -194,15 +253,18 @@ vi.mock('$app/paths', () => ({
 vi.mock('$lib/stores/ws', () => ({
   globalGameplaysClient: {
     getOrCreate: () => mocks.gameplayClient,
-    disconnect: mocks.gameplayDisconnect
+    disconnect: mocks.gameplayDisconnect,
+    setReadOnlyMode: mocks.gameplayClient.setReadOnlyMode
   },
   globalPresenceClient: {
     getOrCreate: () => mocks.presenceClient,
-    disconnect: mocks.presenceDisconnect
+    disconnect: mocks.presenceDisconnect,
+    setReadOnlyMode: mocks.presenceClient.setReadOnlyMode
   },
   requestPresenceReconnect: mocks.requestPresenceReconnect,
   setLastPresenceToken: vi.fn(),
-  setPresenceReconnectRequest: mocks.setPresenceReconnectRequest
+  setPresenceReconnectRequest: mocks.setPresenceReconnectRequest,
+  standbyMode: mocks.standbyMode
 }));
 
 describe('layout auth guard', () => {
@@ -217,6 +279,34 @@ describe('layout auth guard', () => {
     mocks.goto.mockReset();
     mocks.login.mockReset();
     mocks.logout.mockReset();
+    mocks.takeoverSession.mockReset().mockResolvedValue(undefined);
+    mocks.broadcastSessionTakeoverRequest
+      .mockReset()
+      .mockImplementation((requesterTabId, requestId) => {
+        [...mocks.sessionMessageHandlers].forEach((handler) =>
+          handler({
+            type: 'takeover-ack',
+            tabId: 'active-tab',
+            requesterTabId,
+            requestId
+          })
+        );
+      });
+    mocks.broadcastTakeoverAck.mockReset();
+    mocks.broadcastTakeoverConfirmed
+      .mockReset()
+      .mockImplementation((requesterTabId, ownerTabId, requestId) => {
+        [...mocks.sessionMessageHandlers].forEach((handler) =>
+          handler({
+            type: 'takeover-ready',
+            tabId: ownerTabId,
+            requesterTabId,
+            requestId
+          })
+        );
+      });
+    mocks.broadcastTakeoverReady.mockReset();
+    mocks.broadcastTakeoverFailed.mockReset();
     mocks.play.mockReset();
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.unlock.mockReset();
@@ -234,6 +324,9 @@ describe('layout auth guard', () => {
       mocks.presenceAlive = false;
     });
     mocks.gameplayDisconnect.mockReset();
+    mocks.presenceClient.disconnectAndWait.mockReset().mockResolvedValue(undefined);
+    mocks.gameplayClient.disconnectAndWait.mockReset().mockResolvedValue(undefined);
+    mocks.broadcastSessionTakeoverDismissed.mockReset();
     mocks.presenceHandlers.clear();
     mocks.broadcastPresenceUsers.mockReset();
     mocks.presenceClient.connect.mockReset().mockImplementation(() => {
@@ -256,6 +349,7 @@ describe('layout auth guard', () => {
     mocks.claimGameplayOwnership.mockReset().mockResolvedValue(vi.fn());
     mocks.releaseGameplayOwnership.mockReset();
     mocks.presenceReconnectRequest = null;
+    mocks.standbyMode.set(false);
     mocks.requestPresenceReconnect.mockReset().mockImplementation(() => {
       mocks.presenceReconnectRequest?.();
     });
@@ -306,6 +400,420 @@ describe('layout auth guard', () => {
 
     publishNavigation('/game/game-1');
     expect(mocks.presenceDisconnect).not.toHaveBeenCalled();
+  });
+
+  it.each(['presence', 'gameplay'])(
+    'shows the conflict modal and stops presence retries after a %s session conflict',
+    async (socket) => {
+      session.setUser({
+        id: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      });
+
+      render(Layout, { props: { children: stubChild } });
+      await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+
+      const closeHandler =
+        socket === 'presence'
+          ? mocks.presenceHandlers.get('closed')
+          : mocks.gameplayHandlers.get('closed');
+      expect(closeHandler).toBeDefined();
+      closeHandler?.({ code: 4409, reason: 'session_already_active' });
+
+      expect(await screen.findByRole('dialog')).toHaveTextContent('Session already active');
+      mocks.presenceAlive = false;
+      fireEvent(document, new Event('visibilitychange'));
+
+      expect(mocks.presenceConnect).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('shows a takeover choice when another tab owns the session without releasing it', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'presence-owner', tabId: 'original-tab' })
+    );
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Session already active');
+    expect(mocks.broadcastSessionTakeoverRequest).toHaveBeenCalledWith(
+      'tab-test',
+      expect.any(String)
+    );
+    expect(screen.getByRole('main')).toHaveProperty('inert', true);
+    expect(mocks.presenceClient.setReadOnlyMode).toHaveBeenCalledWith(true);
+    expect(mocks.gameplayClient.setReadOnlyMode).toHaveBeenCalledWith(true);
+    expect(mocks.presenceDisconnect).not.toHaveBeenCalled();
+    expect(mocks.gameplayDisconnect).not.toHaveBeenCalled();
+    expect(mocks.takeoverSession).not.toHaveBeenCalled();
+  });
+
+  it('shows the standby message without connection alerts when the session is replaced', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({ code: 4409, reason: 'session_replaced' });
+
+    const banner = await screen.findByTestId('standby-message');
+    expect(banner).toHaveTextContent('Session active in another tab. Actions are disabled here.');
+    expect(screen.queryByText('Connection lost. Reconnecting…')).not.toBeInTheDocument();
+  });
+
+  it('lets the user dismiss into standby without logging out or interrupting the original tab', async () => {
+    const user = userEvent.setup();
+    mocks.logout.mockResolvedValue(undefined);
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({
+      code: 4409,
+      reason: 'session_already_active',
+      path: '/api/v2/ws/presence'
+    });
+    mocks.claimGameplayOwnership.mockReturnValueOnce(new Promise(() => {}));
+    expect(await screen.findByRole('button', { name: 'Continue here' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Stay in original tab' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Stay in original tab' }));
+
+    expect(await screen.findByTestId('standby-message')).toHaveTextContent(
+      'Session active in another tab. Actions are disabled here.'
+    );
+    expect(screen.getByRole('banner')).toHaveProperty('inert', true);
+    expect(screen.getByRole('main')).toHaveProperty('inert', true);
+    expect(screen.getByTestId('logout-button')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Switch to light mode' })).toBeDisabled();
+    expect(mocks.broadcastSessionTakeoverDismissed).toHaveBeenCalledWith('tab-test');
+    expect(mocks.presenceClient.setReadOnlyMode).toHaveBeenCalledWith(true);
+    expect(mocks.gameplayClient.setReadOnlyMode).toHaveBeenCalledWith(true);
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect(mocks.goto).not.toHaveBeenCalledWith('/login');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps the owner tab active when another tab dismisses takeover', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'session-takeover-dismissed', tabId: 'other-tab' })
+    );
+
+    expect(mocks.presenceDisconnect).not.toHaveBeenCalled();
+    expect(mocks.gameplayDisconnect).not.toHaveBeenCalled();
+    expect(mocks.presenceClient.setReadOnlyMode).not.toHaveBeenCalledWith(true);
+    expect(mocks.gameplayClient.setReadOnlyMode).not.toHaveBeenCalledWith(true);
+    expect(screen.queryByTestId('standby-message')).not.toBeInTheDocument();
+    expect(mocks.goto).not.toHaveBeenCalledWith('/login');
+  });
+
+  it('reactivates standby after the active tab releases ownership', async () => {
+    const user = userEvent.setup();
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    let releaseGameplay: ((release: () => void) => void) | undefined;
+    let releasePresence: ((release: () => void) => void) | undefined;
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({
+      code: 4409,
+      reason: 'session_already_active',
+      path: '/api/v2/ws/presence'
+    });
+    mocks.claimGameplayOwnership.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseGameplay = resolve;
+      })
+    );
+    mocks.claimPresenceOwnership.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releasePresence = resolve;
+      })
+    );
+    await user.click(await screen.findByRole('button', { name: 'Stay in original tab' }));
+    expect(await screen.findByTestId('standby-message')).toBeInTheDocument();
+
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'presence-takeover', tabId: 'active-tab' })
+    );
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({ type: 'presence-release', tabId: 'active-tab' })
+    );
+    releaseGameplay?.(vi.fn());
+    await waitFor(() => expect(mocks.claimPresenceOwnership).toHaveBeenCalledTimes(2));
+    releasePresence?.(vi.fn());
+
+    await waitFor(() => expect(screen.queryByTestId('standby-message')).not.toBeInTheDocument());
+    expect(mocks.presenceClient.setReadOnlyMode).toHaveBeenLastCalledWith(false);
+    expect(mocks.gameplayClient.setReadOnlyMode).toHaveBeenLastCalledWith(false);
+  });
+
+  it('acknowledges a takeover request and waits for confirmation before closing sockets', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    let finishPresenceClose: ((value: undefined) => void) | undefined;
+    let finishGameplayClose: ((value: undefined) => void) | undefined;
+    mocks.presenceClient.disconnectAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishPresenceClose = resolve;
+        })
+    );
+    mocks.gameplayClient.disconnectAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishGameplayClose = resolve;
+        })
+    );
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({
+        type: 'session-takeover-request',
+        tabId: 'other-tab',
+        requestId: 'release-request'
+      })
+    );
+
+    expect(mocks.broadcastTakeoverAck).toHaveBeenCalledWith(
+      'tab-test',
+      'other-tab',
+      'release-request'
+    );
+    expect(mocks.presenceClient.disconnectAndWait).not.toHaveBeenCalled();
+    expect(mocks.gameplayClient.disconnectAndWait).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('standby-message')).not.toBeInTheDocument();
+
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({
+        type: 'takeover-confirmed',
+        tabId: 'other-tab',
+        ownerTabId: 'tab-test',
+        requestId: 'release-request'
+      })
+    );
+    const banner = await screen.findByTestId('standby-message');
+    expect(banner).toHaveTextContent('Session active in another tab. Actions are disabled here.');
+    expect(mocks.broadcastTakeoverReady).not.toHaveBeenCalled();
+    finishPresenceClose?.(undefined);
+    await Promise.resolve();
+    expect(mocks.broadcastTakeoverReady).not.toHaveBeenCalled();
+    finishGameplayClose?.(undefined);
+    await waitFor(() =>
+      expect(mocks.broadcastTakeoverReady).toHaveBeenCalledWith(
+        'tab-test',
+        'other-tab',
+        'release-request'
+      )
+    );
+    fireEvent(document, new Event('visibilitychange'));
+    expect(mocks.presenceConnect).toHaveBeenCalledOnce();
+    expect(screen.queryByText('Connection lost. Reconnecting…')).not.toBeInTheDocument();
+  });
+
+  it('deduplicates non-session connection alerts across both sockets', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({ code: 1006, reason: 'network_error' });
+    mocks.gameplayHandlers.get('closed')?.({ code: 1006, reason: 'network_error' });
+
+    await screen.findByRole('status');
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Connection lost. Reconnecting…');
+  });
+
+  it('reconnects presence and gameplay after takeover succeeds', async () => {
+    const user = userEvent.setup();
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    const closeHandler = mocks.presenceHandlers.get('closed');
+    expect(closeHandler).toBeDefined();
+    closeHandler?.({
+      code: 4409,
+      reason: 'session_already_active'
+    });
+    await screen.findByRole('dialog');
+
+    await user.click(screen.getByRole('button', { name: 'Continue here' }));
+    expect(screen.getByRole('button', { name: 'Transferring session…' })).toBeDisabled();
+    await waitFor(() => expect(mocks.takeoverSession).toHaveBeenCalledOnce());
+    expect(mocks.broadcastSessionTakeoverRequest).toHaveBeenCalledOnce();
+    expect(mocks.broadcastTakeoverConfirmed).toHaveBeenCalledWith(
+      'tab-test',
+      'active-tab',
+      expect.any(String)
+    );
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledTimes(2));
+
+    mocks.presenceHandlers.get('auth_ok')?.();
+    await waitFor(() => expect(mocks.gameplayClient.connect).toHaveBeenCalledWith('access-token'));
+    mocks.gameplayHandlers.get('auth_ok')?.();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.gameplayClient.connect).toHaveBeenCalledWith('access-token');
+  });
+
+  it('shows an error in the conflict modal when takeover fails', async () => {
+    const user = userEvent.setup();
+    mocks.takeoverSession.mockRejectedValue(new Error('takeover failed'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    const closeHandler = mocks.presenceHandlers.get('closed');
+    expect(closeHandler).toBeDefined();
+    closeHandler?.({
+      code: 4409,
+      reason: 'session_already_active'
+    });
+    await screen.findByRole('dialog');
+
+    await user.click(screen.getByRole('button', { name: 'Continue here' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to take over session. Please try again.'
+    );
+    expect(screen.getByRole('button', { name: 'Continue here' })).toBeEnabled();
+  });
+
+  it('shows a recoverable error when the takeover request times out', async () => {
+    mocks.takeoverSession.mockImplementation(() => new Promise<void>(() => {}));
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({
+      code: 4409,
+      reason: 'session_already_active'
+    });
+    await screen.findByRole('dialog');
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue here' }));
+      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await Promise.resolve();
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Session transfer timed out. The original tab is active again.'
+      );
+      expect(mocks.broadcastTakeoverFailed).toHaveBeenCalledWith(
+        'tab-test',
+        'active-tab',
+        expect.any(String)
+      );
+      expect(screen.getByRole('button', { name: 'Continue here' })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reclaims ownership when the requester reports a failed takeover', async () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({
+        type: 'session-takeover-request',
+        tabId: 'new-tab',
+        requestId: 'failed-request'
+      })
+    );
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({
+        type: 'takeover-confirmed',
+        tabId: 'new-tab',
+        ownerTabId: 'tab-test',
+        requestId: 'failed-request'
+      })
+    );
+    await waitFor(() =>
+      expect(mocks.broadcastTakeoverReady).toHaveBeenCalledWith(
+        'tab-test',
+        'new-tab',
+        'failed-request'
+      )
+    );
+    mocks.sessionMessageHandlers.forEach((handler) =>
+      handler({
+        type: 'takeover-failed',
+        tabId: 'new-tab',
+        ownerTabId: 'tab-test',
+        requestId: 'failed-request'
+      })
+    );
+
+    await waitFor(() => expect(mocks.claimPresenceOwnership).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('standby-message')).not.toBeInTheDocument();
+    expect(mocks.presenceClient.setReadOnlyMode).toHaveBeenLastCalledWith(false);
+    expect(mocks.presenceConnect).toHaveBeenCalledTimes(2);
   });
 
   it('answers another tab presence-list-request while this tab owns presence', async () => {
