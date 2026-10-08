@@ -286,8 +286,13 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         return;
       }
 
-      if (closeEvent.code === 4401 || closeEvent.code === 4408) {
+      if (closeEvent.code === 4401 || closeEvent.code === 4408 || closeEvent.code === 4409) {
         shouldReconnect = false;
+        dispatchToHandlers('closed', {
+          code: closeEvent.code,
+          reason: closeEvent.reason || 'closed',
+          path
+        });
         dispatchToHandlers('auth_failed', {
           reason: closeEvent.reason || 'auth_failed',
           code: closeEvent.code,
@@ -297,6 +302,12 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         socket = null;
         return;
       }
+
+      dispatchToHandlers('closed', {
+        code: closeEvent.code,
+        reason: closeEvent.reason || 'closed',
+        path
+      });
 
       if (!shouldReconnect) {
         setState('disconnected');

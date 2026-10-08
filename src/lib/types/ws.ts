@@ -3,7 +3,7 @@ export interface WsEnvelope<E extends string = string, P = unknown> {
   payload: P;
 }
 
-export type WsCloseCode = 1000 | 1007 | 1009 | 4401 | 4408 | 4429 | 4500;
+export type WsCloseCode = 1000 | 1007 | 1009 | 4401 | 4408 | 4409 | 4429 | 4500;
 
 export const WsCloseReason = {
   NORMAL: 1000,
@@ -11,6 +11,7 @@ export const WsCloseReason = {
   TOO_LARGE: 1009,
   UNAUTHORIZED: 4401,
   AUTH_TIMEOUT: 4408,
+  SESSION_CONFLICT: 4409,
   TOO_MANY_CONNECTIONS: 4429,
   INTERNAL_ERROR: 4500
 } as const;
