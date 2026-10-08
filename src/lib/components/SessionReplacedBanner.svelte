@@ -1,6 +1,7 @@
 <div
-  role="alert"
-  class="fixed inset-x-0 top-0 z-50 flex justify-center bg-red-600/95 px-4 py-3 text-center text-sm font-medium text-white shadow-lg"
+  role="status"
+  data-testid="standby-message"
+  class="border-b border-amber-400/50 bg-amber-400/10 px-6 py-3 text-center text-sm font-semibold text-amber-300"
 >
-  Session moved to another tab. Close this tab or refresh to sign in again.
+  Session active in another tab. Actions are disabled here.
 </div>
