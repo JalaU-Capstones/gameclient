@@ -13,16 +13,21 @@ const mocks = vi.hoisted(() => ({
   subscribeGameplayEvents: vi.fn()
 }));
 
-vi.mock('$lib/api/ws', () => ({
-  createGameplaysClient: mocks.createGameplaysClient,
-  createPresenceClient: mocks.createPresenceClient
-}));
+vi.mock('$lib/api/ws', async () => {
+  const actual = await vi.importActual<typeof import('$lib/api/ws')>('$lib/api/ws');
+  return {
+    ...actual,
+    createGameplaysClient: mocks.createGameplaysClient,
+    createPresenceClient: mocks.createPresenceClient
+  };
+});
 vi.mock('$lib/auth/sessionLock', () => ({
   broadcastGameplayEvent: mocks.broadcastGameplayEvent,
   claimGameplayOwnership: mocks.claimGameplayOwnership,
   subscribeGameplayEvents: mocks.subscribeGameplayEvents
 }));
 
+import { createWebSocketClient } from '$lib/api/ws';
 import {
   globalGameplaysClient,
   globalPresenceClient,
@@ -56,7 +61,8 @@ describe('globalGameplaysClient', () => {
       state: writable<'connected' | 'disconnected'>('disconnected'),
       isAlive: vi.fn().mockReturnValue(false),
       connect: vi.fn(),
-      disconnect: vi.fn()
+      disconnect: vi.fn(),
+      on: vi.fn().mockReturnValue(vi.fn())
     });
   });
 
@@ -67,6 +73,27 @@ describe('globalGameplaysClient', () => {
     expect(first).toBe(second);
     expect(mocks.createGameplaysClient).toHaveBeenCalledTimes(1);
     expect(get(globalGameplaysClient)).toBe(first);
+  });
+
+  it('creates a presence client exactly once when its instance is initially null', () => {
+    const first = globalPresenceClient.getOrCreate();
+
+    expect(globalPresenceClient.getOrCreate()).toBe(first);
+    expect(mocks.createPresenceClient).toHaveBeenCalledOnce();
+  });
+
+  it('propagates factory errors without storing a stale client', () => {
+    const error = new Error('client creation failed');
+    mocks.createGameplaysClient.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    expect(() => globalGameplaysClient.getOrCreate()).toThrow(error);
+
+    const client = globalGameplaysClient.getOrCreate();
+    expect(client).toBeDefined();
+    expect(globalGameplaysClient.getOrCreate()).toBe(client);
+    expect(mocks.createGameplaysClient).toHaveBeenCalledTimes(2);
   });
 
   it('disconnects, clears the instance, and publishes null', () => {
@@ -184,5 +211,54 @@ describe('globalGameplaysClient', () => {
     expect(mocks.send).toHaveBeenCalledWith('leader-event', { id: 2 });
     client.disconnect();
     expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('dispatches closed events with the close code and reason and disables reconnect on 4409', () => {
+    const originalWebSocket = globalThis.WebSocket;
+    const closeListener = vi.fn();
+    const closeSpy = vi.fn();
+
+    class MockWebSocket {
+      static instances: MockWebSocket[] = [];
+      readyState = WebSocket.OPEN;
+      close = closeSpy;
+      send = vi.fn();
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+
+    Object.defineProperty(globalThis, 'WebSocket', {
+      configurable: true,
+      writable: true,
+      value: MockWebSocket
+    });
+
+    const client = createWebSocketClient({ path: '/api/v2/ws/presence' });
+    client.on('closed', closeListener);
+    client.connect('token');
+
+    const wsInstance = MockWebSocket.instances[0];
+    expect(wsInstance).toBeDefined();
+    wsInstance.onclose?.({ code: 4409, reason: 'session_replaced' } as CloseEvent);
+
+    expect(closeListener).toHaveBeenCalledWith({
+      code: 4409,
+      reason: 'session_replaced',
+      path: '/api/v2/ws/presence'
+    });
+    expect(client.state).toBeDefined();
+    expect(closeListener).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(globalThis, 'WebSocket', {
+      configurable: true,
+      writable: true,
+      value: originalWebSocket
+    });
   });
 });
