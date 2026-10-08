@@ -12,6 +12,7 @@ import {
   broadcastGameplayEvent,
   broadcastPresenceUsers,
   broadcastSessionRefreshed,
+  broadcastSessionRelease,
   claimPresenceOwnership,
   claimGameplayOwnership,
   getLastSessionRefreshAt,
@@ -256,5 +257,117 @@ describe('presence ownership lock', () => {
     expect(request).toHaveBeenCalledOnce();
     releaseGameplayOwnership();
     expect(() => release()).not.toThrow();
+  });
+
+  it('broadcasts session release requests and releases the owner lock on request', async () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      static instance: MockBroadcastChannel;
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+      readonly messages: unknown[] = [];
+
+      constructor() {
+        MockBroadcastChannel.instance = this;
+      }
+
+      postMessage(message: unknown) {
+        this.messages.push(message);
+      }
+
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+
+    const request = vi.fn(
+      async (_name: string, _options: { mode: 'exclusive' }, callback: () => Promise<void>) =>
+        callback()
+    );
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request }
+    });
+
+    const releasePresence = await claimPresenceOwnership('owner-tab');
+    const releaseGameplay = await claimGameplayOwnership('game-tab');
+
+    broadcastSessionRelease('owner-tab');
+
+    expect(MockBroadcastChannel.instance.messages).toContainEqual({
+      type: 'session-release-request',
+      tabId: 'owner-tab'
+    });
+    expect(() => releasePresence()).not.toThrow();
+    expect(() => releaseGameplay()).not.toThrow();
+
+    if (originalBroadcastChannel) {
+      Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+    } else {
+      Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+    }
+  });
+
+  it('ignores release requests from unknown tabs and safely handles requests without an owner', async () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      static instance: MockBroadcastChannel;
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      constructor() {
+        MockBroadcastChannel.instance = this;
+      }
+
+      postMessage() {}
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+
+    const request = vi.fn(
+      async (_name: string, _options: { mode: 'exclusive' }, callback: () => Promise<void>) =>
+        callback()
+    );
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request }
+    });
+
+    const closeChannel = openSessionChannel();
+    let release: (() => void) | undefined;
+    try {
+      const ownerClaim = await claimPresenceOwnership('owner-tab');
+      release = ownerClaim;
+
+      const dispatchReleaseRequest = (tabId: string) =>
+        MockBroadcastChannel.instance.onmessage?.({
+          data: { type: 'session-release-request', tabId }
+        } as MessageEvent<SessionMessage>);
+
+      expect(() => dispatchReleaseRequest('unknown-tab')).not.toThrow();
+      expect(await claimPresenceOwnership('owner-tab')).toBe(ownerClaim);
+      expect(request).toHaveBeenCalledOnce();
+
+      releasePresenceOwnership();
+      release = undefined;
+      expect(() => dispatchReleaseRequest('unknown-tab')).not.toThrow();
+    } finally {
+      release?.();
+      closeChannel();
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
   });
 });

@@ -1,6 +1,7 @@
 export type SessionMessage =
   | { type: 'logout' }
   | { type: 'session-refreshed'; at: number }
+  | { type: 'session-release-request'; tabId: string }
   | { type: 'presence-takeover'; tabId: string }
   | { type: 'presence-release'; tabId: string }
   | { type: 'presence-query'; tabId: string }
@@ -104,6 +105,16 @@ function ensureChannel(): BroadcastChannel | null {
     } else if (message.type === 'gameplay-event') {
       messageHandlers.forEach((handler) => handler(message));
       return;
+    } else if (message.type === 'session-release-request') {
+      const isPresenceOwner = presenceOwnerId === message.tabId;
+      const isGameplayOwner = gameplayOwnerId === message.tabId;
+      if (!isPresenceOwner && !isGameplayOwner) return;
+      if (isPresenceOwner && presenceLockRelease) {
+        releasePresenceOwnership();
+      }
+      if (isGameplayOwner && gameplayLockRelease) {
+        releaseGameplayOwnership();
+      }
     } else if (message.type === 'session-lock-request') {
       pendingLockRequests.add(message.requestId);
       if (fallbackOwner) {
@@ -165,6 +176,17 @@ function postMessage(message: SessionMessage): void {
 
 export function broadcastLogout(): void {
   postMessage({ type: 'logout' });
+}
+
+export function broadcastSessionRelease(tabId: string): void {
+  postMessage({ type: 'session-release-request', tabId });
+}
+
+export function onSessionReleaseRequest(handler: (requesterTabId: string) => void): () => void {
+  return subscribeSessionMessages((message) => {
+    if (message.type !== 'session-release-request') return;
+    handler(message.tabId);
+  });
 }
 
 export function broadcastSessionRefreshed(at = Date.now()): void {
