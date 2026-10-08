@@ -145,6 +145,14 @@ vi.mock('$lib/auth/sessionLock', () => ({
   announcePresenceRelease: vi.fn(),
   broadcastPresenceUsers: mocks.broadcastPresenceUsers,
   broadcastLogout: vi.fn(),
+  broadcastSessionRelease: vi.fn(),
+  onSessionReleaseRequest: (handler: (requesterTabId: string) => void) => {
+    const callback = (message: { type: string; tabId?: string }) => {
+      if (message.type === 'session-release-request' && message.tabId) handler(message.tabId);
+    };
+    mocks.sessionMessageHandlers.add(callback);
+    return () => mocks.sessionMessageHandlers.delete(callback);
+  },
   onRemoteLogout: (handler: () => void) => {
     const callback = (message: { type: string }) => {
       if (message.type === 'logout') handler();

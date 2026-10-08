@@ -6,6 +6,7 @@
   import type { Pathname } from '$app/types';
   import { page } from '$app/stores';
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
+  import { authApi } from '$lib/api/auth';
   import { sounds } from '$lib/audio/sounds';
   import { performLogout } from '$lib/auth/logout';
   import {
@@ -23,10 +24,12 @@
   } from '$lib/stores/ws';
   import {
     broadcastPresenceUsers,
+    broadcastSessionRelease,
     claimGameplayOwnership,
     claimPresenceOwnership,
     createTabId,
     onRemoteLogout,
+    onSessionReleaseRequest,
     openSessionChannel,
     releaseGameplayOwnership,
     releasePresenceOwnership,
@@ -36,6 +39,8 @@
   import { resolveRedirect } from '$lib/auth/redirect';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+  import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
+  import SessionReplacedBanner from '$lib/components/SessionReplacedBanner.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
   import '../app.css';
 
@@ -44,6 +49,9 @@
   let { children } = $props();
   let isLeavingGame = $state(false);
   let authError = $state('');
+  let sessionConflict = $state(false);
+  let sessionReplaced = $state(false);
+  let sessionReplacedRef = false;
   let layoutMounted = false;
   let presenceStarting: Promise<void> | null = null;
   let presenceOwnerRelease: (() => void) | null = null;
@@ -95,6 +103,18 @@
     globalGameplaysClient.disconnect();
   }
 
+  function releaseAllLocalLocks() {
+    if (gameplayOwnerRelease) {
+      releaseGameplayOwnership();
+      gameplayOwnerRelease = null;
+    }
+    if (presenceOwnerRelease) {
+      releasePresenceOwnership();
+      presenceOwnerRelease = null;
+    }
+    setPresenceReconnectRequest(null);
+  }
+
   function releaseLayoutPresence(disconnect: boolean) {
     const hadPresenceOwnership = presenceOwnerRelease !== null;
     const hadPresenceClient = presenceClient !== null;
@@ -124,6 +144,7 @@
   }
 
   async function ensurePresence(forceRefresh = false): Promise<void> {
+    if (sessionReplacedRef) return;
     if (import.meta.env.DEV) console.debug('[layout] ensurePresence start', { forceRefresh });
     if (presenceStarting) return presenceStarting;
     presenceStarting = (async () => {
@@ -237,6 +258,17 @@
     return presenceStarting;
   }
 
+  async function handleTakeover() {
+    broadcastSessionRelease(tabId);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await authApi.takeoverSession();
+    releaseAllLocalLocks();
+    await claimPresenceOwnership(tabId);
+    await claimGameplayOwnership(tabId);
+    sessionConflict = false;
+    await ensurePresence();
+  }
+
   async function handleBack() {
     if (isLeavingGame) return;
     sounds.play('click');
@@ -343,6 +375,17 @@
       navigationHistory.reset();
       void goto(resolve('/login'));
     });
+    const unsubscribeSessionRelease = onSessionReleaseRequest((requesterTabId) => {
+      if (requesterTabId === tabId) return;
+      if (presenceOwnerRelease && presenceClient?.isAlive()) {
+        globalPresenceClient.disconnect();
+        releaseLayoutPresence(false);
+      }
+      if (gameplayOwnerRelease) {
+        globalGameplaysClient.disconnect();
+      }
+      releaseAllLocalLocks();
+    });
     const unsubscribeMessages = subscribeSessionMessages((message) => {
       if (message.type === 'presence-list-request') {
         if (import.meta.env.DEV) {
@@ -355,9 +398,38 @@
         }
       }
     });
+    const unsubscribeClosed = globalPresenceClient
+      .getOrCreate()
+      .on('closed', (payload: { code?: number; reason?: string } | undefined) => {
+        const { code, reason } = payload ?? {};
+        if (code === 4409) {
+          if (reason === 'session_already_active') {
+            sessionConflict = true;
+          } else if (reason === 'session_replaced') {
+            sessionReplaced = true;
+            sessionReplacedRef = true;
+          }
+        }
+      });
+    const unsubscribeGameplayClosed = globalGameplaysClient
+      .getOrCreate()
+      .on('closed', (payload: { code?: number; reason?: string } | undefined) => {
+        const { code, reason } = payload ?? {};
+        if (code === 4409) {
+          if (reason === 'session_already_active') {
+            sessionConflict = true;
+          } else if (reason === 'session_replaced') {
+            sessionReplaced = true;
+            sessionReplacedRef = true;
+          }
+        }
+      });
     return () => {
       unsubscribe();
+      unsubscribeSessionRelease();
       unsubscribeMessages();
+      unsubscribeClosed();
+      unsubscribeGameplayClosed();
       closeChannel();
     };
   });
@@ -490,6 +562,12 @@
       <ThemeToggle />
     </div>
   </header>
+  {#if sessionConflict}
+    <SessionConflictModal onTakeover={handleTakeover} onDismiss={() => (sessionConflict = false)} />
+  {/if}
+  {#if sessionReplaced}
+    <SessionReplacedBanner />
+  {/if}
   <main class="mx-auto max-w-6xl px-6 pb-10">
     {#if authError}
       <div
