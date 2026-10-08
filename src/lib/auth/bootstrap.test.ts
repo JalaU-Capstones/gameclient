@@ -160,6 +160,30 @@ describe('bootstrapSession', () => {
     });
   });
 
+  it('skips refresh when the session is cleared during the unauthorized retry delay', async () => {
+    vi.useFakeTimers({ now: testTime });
+    vi.spyOn(Date, 'now').mockRestore();
+    vi.setSystemTime(testTime);
+    mocks.get.mockRejectedValueOnce(new ApiError('Unauthorized', 401));
+
+    const pending = bootstrapSession().then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error })
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    clearBootstrapSessionCache();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(pending).resolves.toMatchObject({
+      error: {
+        name: 'ApiError',
+        status: 401,
+        message: 'Session ended during authentication'
+      }
+    });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
   it('waits for a recent refresh from another tab before refreshing without a local token', async () => {
     vi.useFakeTimers({ now: testTime });
     vi.spyOn(Date, 'now').mockRestore();
