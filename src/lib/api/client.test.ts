@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHttpClient } from './client';
-import { NetworkError, TimeoutError } from './errors';
+import { TimeoutError } from './errors';
 
 const server = setupServer();
 
@@ -65,6 +65,17 @@ describe('createHttpClient', () => {
     );
 
     await expect(createHttpClient().get('/api/empty')).resolves.toBeUndefined();
+  });
+
+  it('returns null when a successful JSON response contains malformed JSON', async () => {
+    server.use(
+      http.get(
+        '*/api/malformed-json',
+        () => new HttpResponse('{', { headers: { 'content-type': 'application/json' } })
+      )
+    );
+
+    await expect(createHttpClient().get('/api/malformed-json')).resolves.toBeNull();
   });
 
   it('uses include credentials for cookie auth', async () => {
@@ -146,7 +157,36 @@ describe('createHttpClient', () => {
 
     const client = createHttpClient();
 
-    await expect(client.get('/api/offline')).rejects.toBeInstanceOf(NetworkError);
+    await expect(client.get('/api/offline')).rejects.toMatchObject({
+      name: 'NetworkError',
+      message: 'Network request failed'
+    });
+  });
+
+  it('maps an externally aborted request to TimeoutError', async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true }
+            );
+          })
+      )
+    );
+    const controller = new AbortController();
+    try {
+      const pending = createHttpClient().get('/api/aborted', { signal: controller.signal });
+      controller.abort();
+
+      await expect(pending).rejects.toBeInstanceOf(TimeoutError);
+    } finally {
+      vi.stubGlobal('fetch', originalFetch);
+    }
   });
 
   it('respects a custom base URL', async () => {
