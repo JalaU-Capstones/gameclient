@@ -34,13 +34,17 @@ import {
   createCoordinatedGameplaysClient,
   requestPresenceReconnect,
   setLastPresenceToken,
-  setPresenceReconnectRequest
+  setPresenceReconnectRequest,
+  standbyMode
 } from './ws';
 
 describe('globalGameplaysClient', () => {
   beforeEach(() => {
     globalGameplaysClient.disconnect();
     globalPresenceClient.disconnect();
+    globalGameplaysClient.setReadOnlyMode(false);
+    globalPresenceClient.setReadOnlyMode(false);
+    standbyMode.set(false);
     setLastPresenceToken(null);
     setPresenceReconnectRequest(null);
     mocks.broadcastGameplayEvent.mockReset();
@@ -55,11 +59,14 @@ describe('globalGameplaysClient', () => {
     mocks.createGameplaysClient.mockReturnValue({
       state: writable<'connected' | 'disconnected'>('disconnected'),
       isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
+      onAny: vi.fn().mockReturnValue(vi.fn()),
       disconnect: mocks.disconnect
     });
     mocks.createPresenceClient.mockReset().mockReturnValue({
       state: writable<'connected' | 'disconnected'>('disconnected'),
       isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn(),
       on: vi.fn().mockReturnValue(vi.fn())
@@ -80,6 +87,21 @@ describe('globalGameplaysClient', () => {
 
     expect(globalPresenceClient.getOrCreate()).toBe(first);
     expect(mocks.createPresenceClient).toHaveBeenCalledOnce();
+  });
+
+  it('preserves read-only mode across client creation and replacement', () => {
+    globalGameplaysClient.setReadOnlyMode(true);
+    globalGameplaysClient.getOrCreate();
+    expect(mocks.createGameplaysClient.mock.results[0]?.value.setReadOnlyMode).toHaveBeenCalledWith(
+      true
+    );
+
+    globalGameplaysClient.disconnect();
+    globalGameplaysClient.getOrCreate();
+
+    expect(mocks.createGameplaysClient.mock.results[1]?.value.setReadOnlyMode).toHaveBeenCalledWith(
+      true
+    );
   });
 
   it('propagates factory errors without storing a stale client', () => {
@@ -112,19 +134,27 @@ describe('globalGameplaysClient', () => {
     const first = {
       state,
       isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
+      onAny: vi.fn().mockReturnValue(vi.fn()),
       disconnect: mocks.disconnect
     };
     const second = {
       state: writable<'connected' | 'disconnected'>('disconnected'),
       isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
+      onAny: vi.fn().mockReturnValue(vi.fn()),
       disconnect: vi.fn()
     };
     mocks.createGameplaysClient.mockReturnValueOnce(first).mockReturnValueOnce(second);
 
-    expect(globalGameplaysClient.getOrCreate()).toBe(first);
-    expect(globalGameplaysClient.getOrCreate()).toBe(second);
+    const firstClient = globalGameplaysClient.getOrCreate();
+    const secondClient = globalGameplaysClient.getOrCreate();
+
+    expect(firstClient).not.toBe(first);
+    expect(secondClient).not.toBe(second);
+    expect(secondClient).not.toBe(firstClient);
     expect(mocks.disconnect).toHaveBeenCalledOnce();
-    expect(get(globalGameplaysClient)).toBe(second);
+    expect(get(globalGameplaysClient)).toBe(secondClient);
   });
 
   it('requests an owner-controlled reconnect for a dead presence client', () => {
@@ -157,6 +187,7 @@ describe('globalGameplaysClient', () => {
     mocks.createPresenceClient.mockReturnValue({
       state: writable<'connected' | 'disconnected'>('connected'),
       isAlive: vi.fn().mockReturnValue(true),
+      setReadOnlyMode: vi.fn(),
       connect: vi.fn(),
       disconnect: vi.fn()
     });
@@ -173,9 +204,15 @@ describe('globalGameplaysClient', () => {
   it('routes gameplay events through the leader or broadcasts as a follower', async () => {
     const unsubscribe = vi.fn();
     let notifyGameplay!: (event: string, payload?: unknown) => void;
+    let relayGameplayEvent!: (event: string, payload?: unknown) => void;
     mocks.createGameplaysClient.mockReturnValue({
       state: writable<'connected' | 'disconnected'>('disconnected'),
       isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
+      onAny: vi.fn((handler) => {
+        relayGameplayEvent = handler;
+        return vi.fn();
+      }),
       connect: mocks.connect,
       disconnect: mocks.disconnect,
       send: mocks.send,
@@ -200,17 +237,59 @@ describe('globalGameplaysClient', () => {
 
     client.connect('token');
     client.send('queued-event', { id: 1 });
-    expect(mocks.broadcastGameplayEvent).toHaveBeenCalledWith('queued-event', { id: 1 });
+    expect(mocks.broadcastGameplayEvent).toHaveBeenCalledWith('gameplay-send', {
+      event: 'queued-event',
+      payload: { id: 1 }
+    });
 
     claimLeader();
     await Promise.resolve();
-    client.connect('token');
     client.send('leader-event', { id: 2 });
+    relayGameplayEvent('game_state', { id: 3 });
 
     expect(mocks.connect).toHaveBeenCalledWith('token');
     expect(mocks.send).toHaveBeenCalledWith('leader-event', { id: 2 });
+    expect(mocks.broadcastGameplayEvent).toHaveBeenCalledWith('game_state', { id: 3 });
+    client.setReadOnlyMode(true);
+    client.send('blocked-event', { id: 4 });
+    expect(mocks.send).not.toHaveBeenCalledWith('blocked-event', { id: 4 });
+    expect(mocks.broadcastGameplayEvent).not.toHaveBeenCalledWith('gameplay-send', {
+      event: 'blocked-event',
+      payload: { id: 4 }
+    });
     client.disconnect();
     expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('does not reconnect a stale pending leadership claim after clean disconnect', async () => {
+    let completeStaleClaim!: (release: () => void) => void;
+    const baseDisconnectAndWait = vi.fn(async () => undefined);
+    mocks.createGameplaysClient.mockReturnValue({
+      state: writable<'connected' | 'disconnected'>('disconnected'),
+      isAlive: vi.fn().mockReturnValue(false),
+      setReadOnlyMode: vi.fn(),
+      onAny: vi.fn().mockReturnValue(vi.fn()),
+      connect: mocks.connect,
+      disconnect: mocks.disconnect,
+      disconnectAndWait: baseDisconnectAndWait
+    });
+    mocks.claimGameplayOwnership
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeStaleClaim = resolve;
+        })
+      )
+      .mockResolvedValueOnce(vi.fn());
+
+    const client = createCoordinatedGameplaysClient();
+    client.connect('stale-token');
+    await client.disconnectAndWait();
+    client.connect('current-token');
+    completeStaleClaim(vi.fn());
+
+    await vi.waitFor(() => expect(mocks.connect).toHaveBeenCalledWith('current-token'));
+    expect(mocks.connect).not.toHaveBeenCalledWith('stale-token');
+    expect(mocks.claimGameplayOwnership).toHaveBeenCalledTimes(2);
   });
 
   it('dispatches closed events with the close code and reason and disables reconnect on 4409', () => {
