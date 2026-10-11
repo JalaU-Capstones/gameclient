@@ -21,9 +21,9 @@
   } from '$lib/stores/ws';
   import { currentUser } from '$lib/stores/session';
   import type { WebSocketClient } from '$lib/api/ws';
-  import type { User } from '$lib/types/api';
+  import type { PublicUser } from '$lib/types/api';
 
-  let onlineUsers = $state<User[]>([]);
+  let onlineUsers = $state<PublicUser[]>([]);
   let isLoadingOnlineUsers = $state(true);
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
   let isSubmitting = $state(false);
@@ -100,10 +100,10 @@
     presenceClient = globalPresenceClient.getOrCreate();
     const requestOnlineUsers = () => presenceClient.send('list_online_users');
 
-    async function fetchUsers(userIds: string[]): Promise<User[]> {
+    async function fetchUsers(userIds: string[]): Promise<PublicUser[]> {
       const uniqueIds = [...new Set(userIds)];
       const results = await Promise.allSettled(
-        uniqueIds.map((id) => httpClient.get<User>(`/api/v2/users/${id}`))
+        uniqueIds.map((id) => httpClient.get<PublicUser>(`/api/v2/users/${id}`))
       );
       const users = results.flatMap((result) =>
         result.status === 'fulfilled' ? [result.value] : []

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
+import type { PublicUser, User } from '$lib/types/api';
 import LobbyPage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
@@ -113,17 +114,15 @@ vi.mock('$lib/stores/ws', () => ({
   requestPresenceReconnect: mocks.requestPresenceReconnect
 }));
 
-const ada = {
+const ada: User = {
   id: 'ada',
   name: 'Ada',
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
-const bob = {
+const bob: PublicUser = {
   id: 'bob',
-  name: 'Bob',
-  email: 'bob@example.com',
-  registerDate: '2026-01-01T00:00:00Z'
+  name: 'Bob'
 };
 
 function emit(handlers: Map<string, (payload?: never) => void>, event: string, payload?: object) {
@@ -185,6 +184,16 @@ describe('Lobby page', () => {
 
     expect(await screen.findByText('Bob')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Invite' })).toBeInTheDocument();
+  });
+
+  it('fetches public user records by ID without requiring private fields', async () => {
+    render(LobbyPage);
+    await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
+    emit(mocks.presenceHandlers, 'online_users', { users: ['bob'] });
+
+    expect(await screen.findByText('Bob')).toBeInTheDocument();
+    expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/bob');
+    expect(screen.queryByText('bob@example.com')).not.toBeInTheDocument();
   });
 
   it('renders presence lists broadcast from the owner tab', async () => {
