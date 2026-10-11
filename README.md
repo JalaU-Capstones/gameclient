@@ -260,11 +260,13 @@ La capa de cliente se compone por capas pequeñas y reutilizables:
 ### Uso HTTP
 
 ```ts
-import type { User } from '$lib/types/api';
+import type { PublicUser } from '$lib/types/api';
 import { httpClient } from '$lib/api/client';
 
-const users = await httpClient.get<User[]>('/api/v1/users');
+const user = await httpClient.get<PublicUser>('/api/v2/users/USER_ID');
 ```
+
+Los endpoints de listado de usuarios responden `410 Gone` por privacidad.
 
 ### Uso de endpoint concreto
 
@@ -334,6 +336,7 @@ La capa de networking se valida con:
 
 - Importa siempre módulos de endpoint (`healthApi`, `usersApi`, ...) en lugar de hacer `fetch` directo.
 - Lee el estado de autenticación desde `$session` y `$isAuthenticated`; no duplicar el estado del usuario en componentes.
+- Nunca muestres `email` ni `registerDate` de usuarios distintos al usuario actual; usa el tipo `PublicUser` para esas consultas.
 - Instancia clientes WebSocket por pantalla y llama a `disconnect()` en `onDestroy` cuando la vista deje de usarse.
 
 ## Tests
