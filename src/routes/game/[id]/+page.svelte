@@ -12,12 +12,12 @@
   import { currentUser } from '$lib/stores/session';
   import { userFacingMessage } from '$lib/errors/messages';
   import { sounds } from '$lib/audio/sounds';
-  import type { User, Gameplay } from '$lib/types/api';
+  import type { PublicUser, Gameplay } from '$lib/types/api';
 
   let gameplaysClient: WebSocketClient;
   let unsubscribers: (() => void)[] = [];
-  let hostUser = $state<User | null>(null);
-  let guestUser = $state<User | null>(null);
+  let hostUser = $state<PublicUser | null>(null);
+  let guestUser = $state<PublicUser | null>(null);
 
   let board = $state<number[][]>([
     [0, 0, 0],
@@ -159,12 +159,12 @@
 
       if (gameplay.hostPlayer) {
         hostUser = await httpClient
-          .get<User>(`/api/v2/users/${gameplay.hostPlayer}`)
+          .get<PublicUser>(`/api/v2/users/${gameplay.hostPlayer}`)
           .catch(() => null);
       }
       if (gameplay.guestPlayer) {
         guestUser = await httpClient
-          .get<User>(`/api/v2/users/${gameplay.guestPlayer}`)
+          .get<PublicUser>(`/api/v2/users/${gameplay.guestPlayer}`)
           .catch(() => null);
       }
 

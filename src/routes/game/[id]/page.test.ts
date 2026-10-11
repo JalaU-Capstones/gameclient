@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
+import type { PublicUser, User } from '$lib/types/api';
 import GamePage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
@@ -70,17 +71,19 @@ vi.mock('$lib/stores/ws', () => ({
   globalGameplaysClient: { getOrCreate: () => mocks.client }
 }));
 
-const host = {
+const currentUser: User = {
   id: 'host',
   name: 'Ada',
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
-const guest = {
+const host: PublicUser = {
+  id: 'host',
+  name: 'Ada'
+};
+const guest: PublicUser = {
   id: 'guest',
-  name: 'Bob',
-  email: 'bob@example.com',
-  registerDate: '2026-01-01T00:00:00Z'
+  name: 'Bob'
 };
 const startingBoard = [
   [0, 0, 0],
@@ -95,8 +98,10 @@ function emit(event: string, payload?: object) {
 describe('Game page', () => {
   beforeEach(() => {
     session.reset();
-    session.setUser(host);
-    mocks.bootstrapSession.mockReset().mockResolvedValue({ accessToken: 'token', user: host });
+    session.setUser(currentUser);
+    mocks.bootstrapSession
+      .mockReset()
+      .mockResolvedValue({ accessToken: 'token', user: currentUser });
     mocks.get.mockReset().mockImplementation(async (path: string) => {
       if (path.startsWith('/api/v2/gameplays/')) {
         return {
@@ -137,6 +142,15 @@ describe('Game page', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('loads host and guest from minimal public user endpoint responses', async () => {
+    render(GamePage);
+
+    expect(await screen.findByText('Ada')).toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/host');
+    expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/guest');
+  });
+
   it('sanitizes gameplay error messages before rendering them', async () => {
     render(GamePage);
     await screen.findByText('Ada');
@@ -168,7 +182,7 @@ describe('Game page', () => {
   });
 
   it('disables board cells when it is the opponent’s turn', async () => {
-    session.setUser(guest);
+    session.setUser({ ...currentUser, id: guest.id, name: guest.name });
     render(GamePage);
 
     await screen.findByText('Bob');
