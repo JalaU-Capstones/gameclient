@@ -1,7 +1,5 @@
 import { httpClient } from './client';
-import type { User } from '$lib/types/api';
-
-export type PublicUser = Pick<User, 'id' | 'name'>;
+import type { PublicUser } from '$lib/types/api';
 
 export const usersApi = {
   getById: (id: string): Promise<PublicUser> =>
