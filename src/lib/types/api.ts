@@ -1,6 +1,9 @@
-export interface User {
+export interface PublicUser {
   id: string;
   name: string;
+}
+
+export interface User extends PublicUser {
   email: string;
   registerDate: string;
 }
