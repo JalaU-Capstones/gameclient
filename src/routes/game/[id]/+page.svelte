@@ -15,6 +15,7 @@
   import type { PublicUser, Gameplay } from '$lib/types/api';
 
   let gameplaysClient: WebSocketClient;
+  let boundClient: WebSocketClient | null = null;
   let unsubscribers: (() => void)[] = [];
   let hostUser = $state<PublicUser | null>(null);
   let guestUser = $state<PublicUser | null>(null);
@@ -171,6 +172,7 @@
       isLoading = false;
 
       gameplaysClient = globalGameplaysClient.getOrCreate();
+      boundClient = gameplaysClient;
 
       unsubscribers.push(
         gameplaysClient.on('auth_ok', () => {
@@ -295,6 +297,14 @@
       currentGameId = id;
       loadGame(id);
     }
+  });
+
+  // After a session takeover the layout replaces the gameplay client; rebind and resync the board.
+  $effect(() => {
+    const client = $globalGameplaysClient;
+    if (!client || !boundClient || client === boundClient || !currentGameId) return;
+    if (import.meta.env.DEV) console.debug('[game] gameplay client replaced; resyncing');
+    void loadGame(currentGameId);
   });
 
   onMount(() => {

@@ -10,7 +10,21 @@ const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (payload?: never) => void>();
   let standbyValue = false;
   const standbySubscribers = new Set<(value: boolean) => void>();
+  let currentClient: unknown = null;
+  const clientSubscribers = new Set<(client: unknown) => void>();
   return {
+    gameplaysStore: {
+      getOrCreate: () => currentClient,
+      subscribe: (subscriber: (client: unknown) => void) => {
+        subscriber(currentClient);
+        clientSubscribers.add(subscriber);
+        return () => clientSubscribers.delete(subscriber);
+      }
+    },
+    replaceClient: (client: unknown) => {
+      currentClient = client;
+      clientSubscribers.forEach((subscriber) => subscriber(client));
+    },
     bootstrapSession: vi.fn(),
     get: vi.fn(),
     goto: vi.fn(),
@@ -68,7 +82,7 @@ vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$lib/stores/ws', () => ({
   standbyMode: mocks.standbyMode,
-  globalGameplaysClient: { getOrCreate: () => mocks.client }
+  globalGameplaysClient: mocks.gameplaysStore
 }));
 
 const currentUser: User = {
@@ -126,6 +140,7 @@ describe('Game page', () => {
     mocks.play.mockReset();
     mocks.gameplayAlive = true;
     mocks.setStandbyMode(false);
+    mocks.replaceClient(mocks.client);
   });
 
   it('renders an empty board while game data is loading', () => {
@@ -179,6 +194,25 @@ describe('Game page', () => {
     emit('auth_ok');
 
     expect(mocks.client.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' });
+  });
+
+  it('rebinds to the new gameplay client after a session takeover', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    const takeoverClient = {
+      ...mocks.client,
+      on: vi.fn(() => () => {}),
+      send: vi.fn(),
+      connect: vi.fn()
+    };
+    mocks.replaceClient(null);
+    mocks.replaceClient(takeoverClient);
+
+    await waitFor(() =>
+      expect(takeoverClient.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' })
+    );
+    expect(takeoverClient.on).toHaveBeenCalledWith('board_updated', expect.any(Function));
   });
 
   it('disables board cells when it is the opponent’s turn', async () => {
