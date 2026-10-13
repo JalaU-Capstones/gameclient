@@ -331,9 +331,10 @@
               <span class="text-xl font-mono truncate mr-4">{user.name}</span>
               {#if playingIds.has(user.id)}
                 <button
-                  class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-amber-400 text-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)] whitespace-nowrap cursor-not-allowed animate-pulse"
+                  class="flex items-center gap-2 px-6 py-2 uppercase tracking-widest text-sm font-bold rounded-full border-2 whitespace-nowrap cursor-not-allowed border-amber-600 bg-amber-100 text-amber-800 dark:border-amber-400 dark:bg-transparent dark:text-amber-400 dark:shadow-[0_0_10px_rgba(251,191,36,0.5)]"
                   disabled
                 >
+                  <span class="h-2 w-2 rounded-full bg-current animate-pulse"></span>
                   Playing...
                 </button>
               {:else}
