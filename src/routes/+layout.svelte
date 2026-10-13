@@ -252,6 +252,7 @@
       if (path) sessionConflictPaths.add(path);
       beginTakeoverRequest();
     } else if (reason === 'session_replaced') {
+      if (isTakingOver) return;
       takeoverHandshake?.cancel();
       takeoverHandshake = null;
       sessionReplaced = true;
@@ -275,7 +276,7 @@
     presenceStarting = (async () => {
       const result =
         forceRefresh || !presenceAccessToken
-          ? await bootstrapSession()
+          ? await bootstrapSession({ skipRefreshThrottle: expectedTakeoverAttempt !== undefined })
           : { accessToken: presenceAccessToken };
       const accessToken = result?.accessToken;
       if (isStaleTakeover()) return;

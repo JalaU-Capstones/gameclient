@@ -28,6 +28,7 @@ function gameplay(
     hostPlayer,
     guestPlayer,
     playerTurn: hostPlayer,
+    invitationState: 'accepted',
     matchResult: matchResult === null ? null : JSON.stringify(matchResult),
     createdDate: '2026-10-05T15:30:00Z',
     updatedDate: '2026-10-05T15:40:00Z'
@@ -141,7 +142,7 @@ describe('History page', () => {
     const cards = await screen.findAllByRole('listitem');
     expect(within(cards[0]).getByText('Draw')).toBeInTheDocument();
     expect(within(cards[1]).getByText('In progress')).toBeInTheDocument();
-    expect(within(cards[2]).getByText('Not started')).toBeInTheDocument();
+    expect(within(cards[2]).getByText('Waiting for response')).toBeInTheDocument();
     expect(within(cards[3]).getByText('Rejected')).toBeInTheDocument();
   });
 

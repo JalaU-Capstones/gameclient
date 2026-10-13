@@ -21,8 +21,11 @@
     lost: 'You lost',
     draw: 'Draw',
     in_progress: 'In progress',
-    pending: 'Not started',
-    rejected: 'Rejected'
+    pending: 'Waiting for response',
+    rejected: 'Rejected',
+    expired: 'Expired',
+    canceled: 'Canceled',
+    busy: 'Player busy'
   };
 
   const outcomeClasses: Record<Outcome, string> = {
@@ -31,7 +34,10 @@
     draw: 'border-[var(--neon-yellow)] text-[var(--neon-yellow)] shadow-[var(--glow-yellow)]',
     in_progress: 'border-[var(--text-muted)] text-[var(--text-muted)]',
     pending: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    rejected: 'border-[var(--text-muted)] text-[var(--text-muted)]'
+    rejected: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    expired: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    canceled: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    busy: 'border-[var(--text-muted)] text-[var(--text-muted)]'
   };
 
   function formatDate(iso: string): string {

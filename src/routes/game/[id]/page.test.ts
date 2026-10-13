@@ -124,6 +124,7 @@ describe('Game page', () => {
           hostPlayer: 'host',
           guestPlayer: 'guest',
           playerTurn: 'host',
+          invitationState: 'accepted',
           matchResult: null,
           createdDate: '2026-01-01T00:00:00Z',
           updatedDate: '2026-01-01T00:00:00Z'

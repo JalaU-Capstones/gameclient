@@ -25,6 +25,7 @@ function rawGameplay(id: string, matchResult: string | null) {
     hostPlayer: 'host-1',
     guestPlayer: 'guest-1',
     playerTurn: 'host-1',
+    invitationState: 'accepted',
     matchResult,
     createdDate: '2026-10-01T12:00:00Z',
     updatedDate: '2026-10-01T12:05:00Z'
