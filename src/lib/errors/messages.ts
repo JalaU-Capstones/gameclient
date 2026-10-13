@@ -6,6 +6,8 @@ export const USER_MESSAGES: Record<string, string> = {
   INVALID_MOVE: 'That move is not allowed.',
   CANNOT_INVITE_SELF: 'You cannot invite yourself.',
   INVITATION_NOT_PENDING: 'That invitation is no longer valid.',
+  USER_BUSY: 'That player is already in a game.',
+  HOST_BUSY: 'You already have a game or invitation in progress.',
   AUTH_FAILED: 'Your session ended. Please sign in again.',
   UNKNOWN_ERROR: 'Something went wrong. Please try again.'
 };

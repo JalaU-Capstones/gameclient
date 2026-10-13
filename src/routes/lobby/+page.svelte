@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { SvelteSet } from 'svelte/reactivity';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { httpClient } from '$lib/api/client';
@@ -24,6 +25,7 @@
   import type { PublicUser } from '$lib/types/api';
 
   let onlineUsers = $state<PublicUser[]>([]);
+  const playingIds = new SvelteSet<string>();
   let isLoadingOnlineUsers = $state(true);
   let incomingInvite = $state<{ game_id: string; host: { id: string; name: string } } | null>(null);
   let isSubmitting = $state(false);
@@ -126,12 +128,29 @@
     }
 
     unsubscribers.push(
-      presenceClient.on('online_users', (payload: { users?: string[] } | undefined) => {
-        if (import.meta.env.DEV) {
-          console.debug('[lobby] online_users received', payload?.users?.length ?? 0);
+      presenceClient.on(
+        'online_users',
+        (payload: { users?: string[]; playing?: string[] } | undefined) => {
+          if (import.meta.env.DEV) {
+            console.debug('[lobby] online_users received', payload?.users?.length ?? 0);
+          }
+          if (payload?.playing) {
+            playingIds.clear();
+            payload.playing.forEach((id) => playingIds.add(id));
+          }
+          processOnlineUsers(payload?.users ?? []);
         }
-        processOnlineUsers(payload?.users ?? []);
-      })
+      )
+    );
+    unsubscribers.push(
+      presenceClient.on(
+        'user_status',
+        (payload: { user_id: string; status: 'playing' | 'available' } | undefined) => {
+          if (!payload) return;
+          if (payload.status === 'playing') playingIds.add(payload.user_id);
+          else playingIds.delete(payload.user_id);
+        }
+      )
     );
     unsubscribers.push(
       subscribeSessionMessages((message) => {
@@ -310,13 +329,22 @@
               class="flex items-center justify-between p-4 bg-[var(--bg)] border border-[var(--neon-cyan)]/30 rounded-lg hover:border-[var(--neon-cyan)] transition"
             >
               <span class="text-xl font-mono truncate mr-4">{user.name}</span>
-              <button
-                class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-                disabled={$standbyMode}
-                onclick={() => handleInvite(user.id)}
-              >
-                Invite
-              </button>
+              {#if playingIds.has(user.id)}
+                <button
+                  class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-amber-400 text-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)] whitespace-nowrap cursor-not-allowed animate-pulse"
+                  disabled
+                >
+                  Playing...
+                </button>
+              {:else}
+                <button
+                  class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+                  disabled={$standbyMode}
+                  onclick={() => handleInvite(user.id)}
+                >
+                  Invite
+                </button>
+              {/if}
             </li>
           {/if}
         {/each}
