@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => ({
     }) => void
   >(),
   presenceHandlers: new Map<string, (payload?: unknown) => void>(),
+  presenceStoreSubscribers: new Set<(client: unknown) => void>(),
   presenceAlive: false,
   presenceConnect: vi.fn(),
   presenceSend: vi.fn(),
@@ -257,8 +258,19 @@ vi.mock('$lib/stores/ws', () => ({
     setReadOnlyMode: mocks.gameplayClient.setReadOnlyMode
   },
   globalPresenceClient: {
-    getOrCreate: () => mocks.presenceClient,
-    disconnect: mocks.presenceDisconnect,
+    subscribe: (subscriber: (client: unknown) => void) => {
+      mocks.presenceStoreSubscribers.add(subscriber);
+      subscriber(null);
+      return () => mocks.presenceStoreSubscribers.delete(subscriber);
+    },
+    getOrCreate: () => {
+      mocks.presenceStoreSubscribers.forEach((subscriber) => subscriber(mocks.presenceClient));
+      return mocks.presenceClient;
+    },
+    disconnect: () => {
+      mocks.presenceDisconnect();
+      mocks.presenceStoreSubscribers.forEach((subscriber) => subscriber(null));
+    },
     setReadOnlyMode: mocks.presenceClient.setReadOnlyMode
   },
   requestPresenceReconnect: mocks.requestPresenceReconnect,
@@ -940,12 +952,14 @@ describe('layout auth guard', () => {
       currentPath = path;
       currentSearch = search;
       const clearSpy = vi.spyOn(session, 'clear');
-      session.setUser({
+      const user = {
         id: '1',
         name: 'Ada',
         email: 'ada@example.com',
         registerDate: '2026-01-01T00:00:00Z'
-      });
+      };
+      session.setUser(user);
+      mocks.get.mockResolvedValue(user);
 
       render(Layout, { props: { children: stubChild } });
 

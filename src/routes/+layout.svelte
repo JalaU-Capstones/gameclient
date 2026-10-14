@@ -50,7 +50,11 @@
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
   import SessionReplacedBanner from '$lib/components/SessionReplacedBanner.svelte';
+  import ToastHost from '$lib/components/ToastHost.svelte';
+  import InvitationHost from '$lib/components/InvitationHost.svelte';
+  import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
+  import { isUuid } from '$lib/utils/uuid';
   import '../app.css';
 
   const PUBLIC_ROUTES = ['/login', '/register'];
@@ -66,7 +70,7 @@
   let takeoverError = $state('');
   let isTakingOver = $state(false);
   let isRetryingSession = $state(false);
-  let sessionReplacedRef = false;
+  let sessionReplacedRef = $state(false);
   let takeoverSessionUpdated = false;
   const shownCloseCodes = new SvelteSet<number>();
   let genericConnectionAlertShown = false;
@@ -75,6 +79,9 @@
   let presenceStarting: Promise<void> | null = null;
   let presenceOwnerRelease: (() => void) | null = null;
   let gameplayOwnerRelease: (() => void) | null = null;
+  let lastEnsurePath: string | null = null;
+  let lastEnsureSessionConflict = false;
+  let lastEnsureSessionReplaced = false;
   let presenceClient: ReturnType<typeof globalPresenceClient.getOrCreate> | null = null;
   let presenceUnsubscribers: (() => void)[] = [];
   const monitoredSocketClients = new WeakSet<object>();
@@ -253,6 +260,7 @@
       beginTakeoverRequest();
     } else if (reason === 'session_replaced') {
       if (isTakingOver) return;
+      lastEnsurePath = null;
       takeoverHandshake?.cancel();
       takeoverHandshake = null;
       sessionReplaced = true;
@@ -495,6 +503,7 @@
   }
 
   async function handleTakeover() {
+    lastEnsurePath = null;
     isTakingOver = true;
     takeoverSessionUpdated = false;
     takeoverError = '';
@@ -563,6 +572,9 @@
       sessionRetryingPaths.clear();
       isRetryingSession = false;
       sessionReplaced = false;
+      lastEnsurePath = $page.url.pathname;
+      lastEnsureSessionConflict = sessionConflict;
+      lastEnsureSessionReplaced = sessionReplacedRef;
     } catch (err) {
       if (attempt !== takeoverAttempt) return;
       takeoverAttempt += 1;
@@ -595,6 +607,7 @@
   }
 
   function handleConflictDismiss() {
+    lastEnsurePath = null;
     takeoverAttempt += 1;
     takeoverHandshake?.cancel();
     takeoverHandshake = null;
@@ -730,6 +743,7 @@
     const unsubscribeMessages = subscribeSessionMessages((message) => {
       if (message.type === 'takeover-confirmed' && message.ownerTabId === tabId) {
         if (pendingTakeoverRequesters.get(message.requestId) !== message.tabId) return;
+        lastEnsurePath = null;
         sessionReplaced = true;
         setStandbyMode(true);
         sessionConflict = false;
@@ -751,6 +765,7 @@
           releaseAllLocalLocks();
           globalPresenceClient.disconnect();
           globalGameplaysClient.disconnect();
+          lastEnsurePath = null;
           broadcastTakeoverReady(tabId, message.tabId, message.requestId);
         })().catch((error: unknown) => {
           sessionReplaced = false;
@@ -830,9 +845,20 @@
     if (!get(isAuthenticated)) globalPresenceClient.disconnect();
   });
 
-  onMount(async () => {
-    if ($isHydrated) return;
+  onMount(() => {
+    onlinePlayers.initialize();
+    const gameplayClient = globalGameplaysClient.getOrCreate();
+    const stopGameCreatedListener = gameplayClient.on(
+      'game_created',
+      (payload: { game_id?: string } | undefined) => {
+        if (!payload || !isUuid(payload.game_id)) return;
+        goto(resolve(`/game/${payload.game_id}`));
+      }
+    );
+    return () => stopGameCreatedListener();
+  });
 
+  onMount(async () => {
     if (import.meta.env.DEV) console.debug('[layout] hydration start');
     session.setLoading(true);
     try {
@@ -858,12 +884,22 @@
     }
     if (!$isHydrated) return;
     if (!$isAuthenticated) {
+      lastEnsurePath = null;
       setStandbyMode(false);
       releaseLayoutPresence(true);
       presenceAccessToken = '';
       setLastPresenceToken(null);
       return;
     }
+    if (isTakingOver) return;
+    const path = $page.url.pathname;
+    const sessionStateChanged =
+      lastEnsureSessionConflict !== sessionConflict ||
+      lastEnsureSessionReplaced !== sessionReplacedRef;
+    if (lastEnsurePath === path && !sessionStateChanged && presenceOwnerRelease !== null) return;
+    lastEnsurePath = path;
+    lastEnsureSessionConflict = sessionConflict;
+    lastEnsureSessionReplaced = sessionReplacedRef;
     void ensurePresence();
   });
 
@@ -973,6 +1009,8 @@
       {takeoverError}
     />
   {/if}
+  <ToastHost />
+  <InvitationHost />
   <main
     bind:this={mainElement}
     class="mx-auto max-w-6xl px-6 pb-10"
