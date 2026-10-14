@@ -175,6 +175,15 @@ describe('History page', () => {
     expect(requested).toEqual(['pablo-id']);
   });
 
+  it('does not render the online players menu on the history page', async () => {
+    mockBackend([]);
+
+    render(HistoryPage);
+
+    expect(await screen.findByText('No games played yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite' })).not.toBeInTheDocument();
+  });
+
   it('shows an error message and no cards when the games cannot be loaded', async () => {
     server.use(
       http.get('*/api/v2/gameplays/my-gameplays', () =>
