@@ -8,6 +8,9 @@ export const USER_MESSAGES: Record<string, string> = {
   INVITATION_NOT_PENDING: 'That invitation is no longer valid.',
   USER_BUSY: 'That player is already in a game.',
   HOST_BUSY: 'You already have a game or invitation in progress.',
+  INVITATION_EXPIRED: 'Your invitation expired.',
+  INVITATION_CANCELED: 'The invitation was canceled.',
+  INVITATION_REJECTED: 'The invitation was declined.',
   AUTH_FAILED: 'Your session ended. Please sign in again.',
   UNKNOWN_ERROR: 'Something went wrong. Please try again.'
 };

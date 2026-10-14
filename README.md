@@ -24,6 +24,14 @@ pnpm install
 cp .env.example .env
 ```
 
+## Security
+
+- Every UUID coming from the backend must pass `isUuid` before being used in routes, redirects, or WS payloads.
+- Every user-facing error message must go through `userFacingMessage` before it is rendered.
+- Never use `{@html}` with backend data or any untrusted string.
+- Client-side debounce is defense in depth; the backend rate limit remains the source of truth for abuse protection.
+- The invitation modal uses a focus trap and maps `Escape` to `reject` to keep the flow safe and accessible.
+
 ## Comandos con Makefile
 
 | Comando               | Descripción                             |
@@ -52,6 +60,61 @@ pnpm dev
 ```
 
 La aplicación se ejecuta en `http://localhost:5173` y usa el proxy de Vite para redirigir `/api` y `/health` hacia `http://localhost:8080`.
+
+## Invitation flow
+
+After the host sends `create_game`, the server responds with `game_created`.
+The host immediately navigates to `/game/[id]` and stays on that route while
+the guest decides. The game page renders its waiting room for both pending and
+queued invitations.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant Lobby
+    participant Server
+    participant Guest
+    Host->>Lobby: Invite player
+    Lobby->>Server: create_game
+    Server-->>Lobby: game_created(game_id)
+    Lobby->>Host: Navigate to /game/[id]
+    Host->>Server: subscribe_game
+    Note over Host: Waiting room shows guest, Cancel,<br/>and embedded online players
+    Server-->>Host: invitation_queued (when guest is busy)
+    Guest->>Server: accept_invitation or reject_invitation
+    Server-->>Host: invitation_accepted / invitation_rejected
+    Server-->>Guest: invitation_accepted
+    Note over Host,Guest: On acceptance, both see the board
+    Host->>Server: leave_game (Cancel)
+    Server-->>Host: Return to /lobby
+```
+
+The waiting room's **Cancel** button sends `leave_game` and returns the host to
+`/lobby`. A player who rejects or whose invitation expires or is canceled is
+also returned to the lobby with a toast. The waiting room includes an online
+players list for challenging another player without leaving the game page.
+
+## Online players e invitaciones
+
+El estado compartido de jugadores conectados vive en `src/lib/stores/onlinePlayers.svelte.ts`. Es un store global, basado en el cliente de presencia, y se inicializa una sola vez desde el layout. El resto de las pantallas usa ese estado para listarse y para detectar quién está jugando, sin volver a subscribirse a `online_users` o `user_status`.
+
+```ts
+import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
+
+onlinePlayers.initialize();
+onlinePlayers.refresh();
+```
+
+`OnlinePlayersMenu` es un componente reutilizable para mostrar la lista de usuarios activos y ofrecer invitaciones. Acepta props tipadas:
+
+- `title?: string` — encabezado visible del panel.
+- `disabled?: boolean` — deshabilita todos los botones de invitación.
+- `emptyMessage?: string` — mensaje cuando no hay jugadores disponibles.
+- `onInvite?: (user: PublicUser) => void` — callback opcional para invitar.
+
+No renderiza al usuario actual y nunca expone UUIDs en la UI. Cuando `onInvite` no se pasa, el menú funciona en modo solo lectura.
+
+`InvitationHost` centraliza el modal de invitación. Se monta una sola vez en el layout y escucha los eventos globales del cliente de gameplay. Las páginas no deben suscribirse a `invitation_*`; ese host se encarga de mostrar el diálogo, aceptar o rechazar, y volver a la ruta del juego.
 
 ## Docker
 
