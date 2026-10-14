@@ -114,6 +114,10 @@ vi.mock('$lib/stores/ws', () => ({
     disconnect: mocks.presenceClient.disconnect
   },
   globalGameplaysClient: {
+    subscribe: (subscriber: (client: typeof mocks.gameplayClient | null) => void) => {
+      subscriber(mocks.gameplayClient);
+      return () => {};
+    },
     getOrCreate: mocks.getGameplayClient,
     disconnect: mocks.gameplayClient.disconnect
   },
@@ -303,8 +307,7 @@ describe('Lobby page', () => {
       game_id: '123e4567-e89b-42d3-a456-426614174002',
       host: { id: bobId, name: 'Bob' }
     });
-    const acceptButton = await screen.findByRole('button', { name: 'Accept' });
-    expect(acceptButton).toBeDisabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
     expect(mocks.gameplayClient.send).not.toHaveBeenCalledWith(
       'create_game',
