@@ -2,6 +2,7 @@
   import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { currentUser } from '$lib/stores/session';
   import type { PublicUser } from '$lib/types/api';
+  import { sanitizeDisplayName } from '$lib/utils/text';
 
   interface Props {
     title?: string;
@@ -33,7 +34,9 @@
         <li
           class="flex items-center justify-between gap-3 rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] px-4 py-3"
         >
-          <span class="truncate font-semibold text-[var(--text-primary)]">{user.name}</span>
+          <span class="truncate font-semibold text-[var(--text-primary)]"
+            >{sanitizeDisplayName(user.name)}</span
+          >
           {#if onInvite}
             <button
               type="button"

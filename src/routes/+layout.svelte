@@ -55,6 +55,7 @@
   import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
   import { isUuid } from '$lib/utils/uuid';
+  import { sanitizeDisplayName } from '$lib/utils/text';
   import '../app.css';
 
   const PUBLIC_ROUTES = ['/login', '/register'];
@@ -84,6 +85,7 @@
   let lastEnsureSessionReplaced = false;
   let presenceClient: ReturnType<typeof globalPresenceClient.getOrCreate> | null = null;
   let presenceUnsubscribers: (() => void)[] = [];
+  let stopGameCreated: (() => void) | undefined;
   const monitoredSocketClients = new WeakSet<object>();
   const sessionConflictPaths = new SvelteSet<string>();
   const sessionRetryingPaths = new SvelteSet<string>();
@@ -847,15 +849,30 @@
 
   onMount(() => {
     onlinePlayers.initialize();
-    const gameplayClient = globalGameplaysClient.getOrCreate();
-    const stopGameCreatedListener = gameplayClient.on(
-      'game_created',
-      (payload: { game_id?: string } | undefined) => {
-        if (!payload || !isUuid(payload.game_id)) return;
-        goto(resolve(`/game/${payload.game_id}`));
-      }
-    );
-    return () => stopGameCreatedListener();
+    const stop = globalGameplaysClient.subscribe((client) => {
+      stopGameCreated?.();
+      stopGameCreated = undefined;
+      if (!client) return;
+      stopGameCreated = client.on(
+        'game_created',
+        (payload: { game_id?: string; turn?: string } | undefined) => {
+          if (
+            !payload ||
+            !isUuid(payload.game_id) ||
+            !isUuid(payload.turn) ||
+            payload.turn !== get(currentUser)?.id
+          ) {
+            return;
+          }
+          goto(resolve(`/game/${payload.game_id}`));
+        }
+      );
+    });
+    return () => {
+      stop();
+      stopGameCreated?.();
+      stopGameCreated = undefined;
+    };
   });
 
   onMount(async () => {
@@ -969,7 +986,7 @@
       <GameTitle text="TIC TAC TOE" />
       {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
         <span class="text-[var(--neon-cyan)] text-xs uppercase tracking-widest mt-1 opacity-80">
-          Welcome, {$currentUser.name}
+          Welcome, {sanitizeDisplayName($currentUser.name)}
         </span>
       {/if}
     </div>
@@ -1010,7 +1027,7 @@
     />
   {/if}
   <ToastHost />
-  <InvitationHost />
+  <InvitationHost disabled={isStandby || sessionConflict} />
   <main
     bind:this={mainElement}
     class="mx-auto max-w-6xl px-6 pb-10"
