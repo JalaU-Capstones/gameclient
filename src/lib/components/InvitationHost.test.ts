@@ -10,7 +10,14 @@ const mocks = vi.hoisted(() => ({
   play: vi.fn(),
   pushToast: vi.fn(),
   send: vi.fn(),
-  handlers: new Map<string, (payload?: unknown) => void>()
+  currentClient: null as {
+    handlers: Map<string, (payload?: unknown) => void>;
+    on: (event: string, handler: (payload?: unknown) => void) => () => void;
+    send: typeof vi.fn;
+  } | null,
+  clientSubscribers: new Set<(client: unknown) => void>(),
+  standbySubscribers: new Set<(value: boolean) => void>(),
+  standbyValue: false
 }));
 
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -20,23 +27,53 @@ vi.mock('$lib/stores/toasts', () => ({ pushToast: mocks.pushToast }));
 vi.mock('$lib/stores/ws', () => ({
   standbyMode: {
     subscribe: (subscriber: (value: boolean) => void) => {
-      subscriber(false);
-      return () => {};
+      mocks.standbySubscribers.add(subscriber);
+      subscriber(mocks.standbyValue);
+      return () => mocks.standbySubscribers.delete(subscriber);
+    },
+    set: (value: boolean) => {
+      mocks.standbyValue = value;
+      mocks.standbySubscribers.forEach((subscriber) => subscriber(value));
     }
   },
   globalGameplaysClient: {
-    getOrCreate: () => ({
-      on: (event: string, handler: (payload?: unknown) => void) => {
-        mocks.handlers.set(event, handler);
-        return () => mocks.handlers.delete(event);
-      },
-      send: mocks.send
-    })
+    subscribe: (subscriber: (client: unknown) => void) => {
+      mocks.clientSubscribers.add(subscriber);
+      subscriber(mocks.currentClient);
+      return () => mocks.clientSubscribers.delete(subscriber);
+    }
   }
 }));
 
-function emit(event: string, payload?: object) {
-  mocks.handlers.get(event)?.(payload as never);
+function createClient() {
+  const handlers = new Map<string, (payload?: unknown) => void>();
+  return {
+    handlers,
+    on: (event: string, handler: (payload?: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    },
+    send: mocks.send
+  };
+}
+
+function setClient(client: ReturnType<typeof createClient> | null) {
+  mocks.currentClient = client;
+  mocks.clientSubscribers.forEach((subscriber) => subscriber(client));
+}
+
+function emit(event: string, payload?: object, client = mocks.currentClient) {
+  client?.handlers.get(event)?.(payload);
+}
+
+const VALID_GAME_ID = '123e4567-e89b-42d3-a456-426614174000';
+
+function validInvite(overrides: Record<string, unknown> = {}) {
+  return {
+    game_id: VALID_GAME_ID,
+    host: { id: 'guest-1', name: 'Bob' },
+    ...overrides
+  };
 }
 
 describe('InvitationHost', () => {
@@ -52,15 +89,18 @@ describe('InvitationHost', () => {
     mocks.play.mockReset();
     mocks.pushToast.mockReset();
     mocks.send.mockReset();
-    mocks.handlers.clear();
+    mocks.clientSubscribers.clear();
+    mocks.standbySubscribers.clear();
+    mocks.standbyValue = false;
+    mocks.currentClient = createClient();
   });
 
-  it('opens the modal for a valid invitation payload', async () => {
+  it('opens the modal for a valid invitation payload and sanitizes the host name', async () => {
     render(InvitationHost);
 
     emit('invitation_received', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000',
-      host: { id: 'guest-1', name: 'Bob' }
+      game_id: VALID_GAME_ID,
+      host: { id: 'guest-1', name: '\u202E Bob\u2066 ' }
     });
 
     expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
@@ -75,7 +115,9 @@ describe('InvitationHost', () => {
       host: { id: 'guest-1', name: 'Bob' }
     });
 
-    await waitFor(() => expect(mocks.handlers.has('invitation_received')).toBe(true));
+    await waitFor(() =>
+      expect(mocks.currentClient?.handlers.has('invitation_received')).toBe(true)
+    );
     expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
   });
 
@@ -83,57 +125,115 @@ describe('InvitationHost', () => {
     render(InvitationHost);
 
     emit('invitation_received', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000',
+      game_id: VALID_GAME_ID,
       host: { id: 'host-1', name: 'Host' }
     });
 
     expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
   });
 
+  it('waits for the current user before displaying an invitation', async () => {
+    session.reset();
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+
+    expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
+    session.setUser({
+      id: 'host-1',
+      name: 'Host',
+      email: 'host@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
+  });
+
   it('accepts a valid invitation by sending the validated game id', async () => {
     render(InvitationHost);
-
-    emit('invitation_received', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000',
-      host: { id: 'guest-1', name: 'Bob' }
-    });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument());
+    emit('invitation_received', validInvite());
+    await screen.findByRole('button', { name: 'Accept' });
     await userEvent.click(screen.getByRole('button', { name: 'Accept' }));
 
-    expect(mocks.send).toHaveBeenCalledWith('accept_invitation', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000'
-    });
+    expect(mocks.send).toHaveBeenCalledWith('accept_invitation', { game_id: VALID_GAME_ID });
   });
 
   it('rejects an invitation and closes the modal', async () => {
     render(InvitationHost);
-
-    emit('invitation_received', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000',
-      host: { id: 'guest-1', name: 'Bob' }
-    });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument()
-    );
+    emit('invitation_received', validInvite());
+    await screen.findByRole('button', { name: 'Decline' });
     await userEvent.click(screen.getByRole('button', { name: 'Decline' }));
 
-    expect(mocks.send).toHaveBeenCalledWith('reject_invitation', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000'
-    });
+    expect(mocks.send).toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
     expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
+  });
+
+  it.each(['invitation_canceled', 'invitation_expired'])(
+    'closes the modal when %s is received',
+    async (event) => {
+      render(InvitationHost);
+      emit('invitation_received', validInvite());
+      await screen.findByText('Challenger Approaching!');
+
+      emit(event);
+
+      await waitFor(() =>
+        expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument()
+      );
+      expect(mocks.pushToast).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('rejects and closes an invitation after 60 seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      render(InvitationHost);
+      emit('invitation_received', validInvite());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.getByText('Challenger Approaching!')).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await waitFor(() =>
+        expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument()
+      );
+      expect(mocks.send).toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
+      expect(mocks.pushToast).toHaveBeenCalledWith('warning', 'Your invitation expired.');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rebinds handlers after the gameplay client is replaced', async () => {
+    const oldClient = mocks.currentClient;
+    render(InvitationHost);
+    const nextClient = createClient();
+
+    setClient(nextClient);
+
+    expect(oldClient?.handlers.has('invitation_received')).toBe(false);
+    expect(nextClient.handlers.has('invitation_received')).toBe(true);
+    emit('invitation_received', validInvite(), nextClient);
+    expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
+  });
+
+  it('closes and makes the modal inert when disabled', async () => {
+    const view = render(InvitationHost, { props: { disabled: false } });
+    emit('invitation_received', validInvite());
+    await screen.findByText('Challenger Approaching!');
+
+    await view.rerender({ disabled: true });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    emit('invitation_received', validInvite());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('maps Escape to reject', async () => {
     render(InvitationHost);
-
-    emit('invitation_received', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000',
-      host: { id: 'guest-1', name: 'Bob' }
-    });
+    emit('invitation_received', validInvite());
+    await screen.findByText('Challenger Approaching!');
     fireEvent.keyDown(document, { key: 'Escape' });
 
-    expect(mocks.send).toHaveBeenCalledWith('reject_invitation', {
-      game_id: '123e4567-e89b-42d3-a456-426614174000'
-    });
+    expect(mocks.send).toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
   });
 });
