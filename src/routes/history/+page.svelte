@@ -8,6 +8,7 @@
   import { currentUser } from '$lib/stores/session';
   import { getOutcome } from '$lib/utils/outcome';
   import type { Outcome } from '$lib/utils/outcome';
+  import { sanitizeDisplayName } from '$lib/utils/text';
 
   let gamesList = $state<GameplayRecord[]>([]);
   let isLoading = $state(true);
@@ -48,7 +49,7 @@
 
   function rivalName(game: GameplayRecord): string {
     const rivalId = game.hostPlayer === myId ? game.guestPlayer : game.hostPlayer;
-    return (rivalId && names[rivalId]) || 'Unknown player';
+    return (rivalId && names[rivalId] && sanitizeDisplayName(names[rivalId])) || 'Unknown player';
   }
 
   async function loadGames() {
