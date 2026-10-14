@@ -114,7 +114,24 @@ onlinePlayers.refresh();
 
 No renderiza al usuario actual y nunca expone UUIDs en la UI. Cuando `onInvite` no se pasa, el menú funciona en modo solo lectura.
 
-`InvitationHost` centraliza el modal de invitación. Se monta una sola vez en el layout y escucha los eventos globales del cliente de gameplay. Las páginas no deben suscribirse a `invitation_*`; ese host se encarga de mostrar el diálogo, aceptar o rechazar, y volver a la ruta del juego.
+`InvitationHost` centralizes the invitation modal. It mounts once in the layout
+and subscribes to the global gameplay-client store, rebinding its event handlers
+whenever takeover replaces the client. Pages should not subscribe to
+`invitation_*`; the host displays the dialog, accepts or rejects the invitation,
+and navigates to the game when accepted.
+
+## Invitation host
+
+- Event handlers are detached from the old gameplay client and registered on
+  each replacement published by `globalGameplaysClient`, including after a
+  session takeover.
+- An unanswered invitation is rejected and dismissed after 60 seconds, with an
+  expiration toast.
+- `sanitizeDisplayName` removes Unicode bidirectional control characters and
+  surrounding whitespace before backend-provided names are displayed.
+- The layout sets `disabled` while in standby or session conflict. The modal
+  closes when disabled, its root becomes `inert`, and accept/reject actions
+  cannot be triggered.
 
 ## Docker
 

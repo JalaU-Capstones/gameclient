@@ -16,6 +16,7 @@
   import { userFacingMessage } from '$lib/errors/messages';
   import OnlinePlayersMenu from '$lib/components/OnlinePlayersMenu.svelte';
   import { isUuid, safeRandomUuid } from '$lib/utils/uuid';
+  import { sanitizeDisplayName } from '$lib/utils/text';
 
   let gameplaysClient: WebSocketClient;
   let unsubscribers: (() => void)[] = [];
@@ -30,6 +31,7 @@
   let turn = $state<string>('');
   let winner = $state<string | null>(null);
   let endReason = $state<string | null>(null);
+  let gameEnded = $state(false);
   let error = $state<string>('');
   let isLoading = $state(true);
   let waitingForRematch = $state(false);
@@ -38,12 +40,45 @@
   let currentGameId = $state('');
   let authRetryTimer: ReturnType<typeof setTimeout> | undefined;
   let authRetryUsed = false;
+  let moveDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastMoveRequestId: string | null = null;
+  let lastMoveCell: { row: number; col: number } | null = null;
 
-  let isGameOver = $derived(winner !== null || endReason !== null);
+  const MOVE_DEADLINE_MS = 8_000;
+
+  function applyBoardSnapshot(snapshot: number[][]) {
+    board = snapshot.map((row) => [...row]);
+  }
+
+  function clearMoveInFlight() {
+    if (moveDeadlineTimer) {
+      clearTimeout(moveDeadlineTimer);
+      moveDeadlineTimer = undefined;
+    }
+    moveInFlight = false;
+    lastMoveRequestId = null;
+    lastMoveCell = null;
+  }
+
+  function armMoveDeadline() {
+    if (moveDeadlineTimer) clearTimeout(moveDeadlineTimer);
+    moveDeadlineTimer = setTimeout(() => {
+      if (!moveInFlight) return;
+      clearMoveInFlight();
+      if (lastMoveCell) {
+        void lastMoveCell;
+      }
+      pushToast('warning', userFacingMessage('MOVE_TIMEOUT'));
+    }, MOVE_DEADLINE_MS);
+  }
+
+  let isGameOver = $derived(gameEnded || winner !== null || endReason !== null);
   let isDraw = $derived(
     endReason === 'draw' || (isGameOver && (winner === null || winner === 'None'))
   );
-  let isMyTurn = $derived($currentUser?.id === turn && !isGameOver);
+  let canPlay = $derived(
+    invitationState === 'accepted' && $currentUser?.id === turn && !isGameOver
+  );
   let isWaiting = $derived(invitationState === 'pending' || invitationState === 'queued');
 
   function handleGameplayAuthFailure(failure: unknown, gameId: string) {
@@ -114,16 +149,19 @@
     unsubscribers.forEach((unsub) => unsub());
     unsubscribers = [];
 
-    board = [
+    applyBoardSnapshot([
       [0, 0, 0],
       [0, 0, 0],
       [0, 0, 0]
-    ];
+    ]);
     turn = '';
     winner = null;
     endReason = null;
-    moveInFlight = false;
+    gameEnded = false;
+    clearMoveInFlight();
     error = '';
+    lastMoveRequestId = null;
+    lastMoveCell = null;
     isLoading = true;
     waitingForRematch = false;
 
@@ -133,7 +171,9 @@
         throw new Error('No access token is available for the WebSocket connection');
 
       const gameplay = await httpClient.get<Gameplay>(`/api/v2/gameplays/${id}`);
-      invitationState = gameplay.invitationState;
+      invitationState =
+        gameplay.invitationState ??
+        (gameplay.guestPlayer !== null && gameplay.matchResult === null ? 'accepted' : 'pending');
 
       const positions = gameplay.currentPositions
         ? JSON.parse(gameplay.currentPositions as string)
@@ -144,7 +184,7 @@
               [0, 0, 0]
             ]
           };
-      board = positions.board;
+      applyBoardSnapshot(positions.board);
       turn = gameplay.playerTurn as string;
 
       if (gameplay.matchResult && gameplay.matchResult !== null) {
@@ -178,9 +218,22 @@
         unsubscribers.push(
           client.on(
             'board_updated',
-            (payload: { board?: number[][]; turn?: string } | undefined) => {
-              if (payload?.board) board = payload.board;
+            (
+              payload: { board?: number[][]; turn?: string; client_request_id?: string } | undefined
+            ) => {
+              if (payload?.client_request_id && payload.client_request_id === lastMoveRequestId) {
+                lastMoveRequestId = null;
+                lastMoveCell = null;
+              }
+              if (gameEnded) {
+                clearMoveInFlight();
+                return;
+              }
+              if (payload?.board) applyBoardSnapshot(payload.board);
               if (payload?.turn) turn = payload.turn;
+              clearMoveInFlight();
+              lastMoveRequestId = null;
+              lastMoveCell = null;
             }
           )
         );
@@ -188,8 +241,10 @@
           client.on(
             'game_over',
             (payload: { winner?: string | null; reason?: string } | undefined) => {
+              gameEnded = true;
               winner = payload?.winner ?? null;
               endReason = payload?.reason ?? null;
+              clearMoveInFlight();
               if (winner === $currentUser?.id) sounds.play('win');
               else if (winner) sounds.play('lose');
               else sounds.play('draw');
@@ -202,9 +257,11 @@
             (
               payload: { winner?: string | null; reason?: string; board?: number[][] } | undefined
             ) => {
-              if (payload?.board) board = payload.board;
+              gameEnded = true;
+              if (payload?.board) applyBoardSnapshot(payload.board);
               winner = payload?.winner ?? null;
               endReason = payload?.reason ?? null;
+              clearMoveInFlight();
               if (winner === $currentUser?.id) sounds.play('win');
               else if (winner) sounds.play('lose');
               else sounds.play('draw');
@@ -218,6 +275,7 @@
         );
         unsubscribers.push(
           client.on('invitation_queued', () => {
+            if (invitationState !== 'pending' && invitationState !== 'queued') return;
             invitationState = 'queued';
             pushToast(
               'info',
@@ -226,8 +284,54 @@
           })
         );
         unsubscribers.push(
+          client.on(
+            'invitation_accepted',
+            (payload: { board?: number[][]; turn?: string } | undefined) => {
+              if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued')) {
+                return;
+              }
+              invitationState = 'accepted';
+              if (payload?.board) applyBoardSnapshot(payload.board);
+              if (payload?.turn) turn = payload.turn;
+              waitingForRematch = false;
+              error = '';
+              clearMoveInFlight();
+            }
+          )
+        );
+        unsubscribers.push(
+          client.on('invitation_rejected', () => {
+            if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
+              return;
+            invitationState = 'rejected';
+            waitingForRematch = false;
+            clearMoveInFlight();
+            pushToast('warning', userFacingMessage('INVITATION_REJECTED'));
+          })
+        );
+        unsubscribers.push(
+          client.on('invitation_expired', () => {
+            if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
+              return;
+            invitationState = 'expired';
+            waitingForRematch = false;
+            clearMoveInFlight();
+            pushToast('warning', userFacingMessage('INVITATION_EXPIRED'));
+          })
+        );
+        unsubscribers.push(
+          client.on('invitation_canceled', () => {
+            if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
+              return;
+            invitationState = 'canceled';
+            waitingForRematch = false;
+            clearMoveInFlight();
+            pushToast('warning', userFacingMessage('INVITATION_CANCELED'));
+          })
+        );
+        unsubscribers.push(
           client.on('error', (payload: { code?: string; message?: string } | undefined) => {
-            moveInFlight = false;
+            clearMoveInFlight();
             if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
               waitingForRematch = false;
             }
@@ -284,6 +388,7 @@
       if (!client || !currentGameId) return;
       if (gameplaysClient && client !== gameplaysClient) {
         if (import.meta.env.DEV) console.debug('[game] gameplay client replaced; resyncing');
+        clearMoveInFlight();
         void loadGame(currentGameId);
       }
     });
@@ -294,23 +399,27 @@
     gameplayClientSubscription?.();
     gameplayClientSubscription = null;
     if (authRetryTimer) clearTimeout(authRetryTimer);
+    clearMoveInFlight();
     unsubscribers.forEach((unsub) => unsub());
   });
 
   function playMove(row: number, col: number) {
-    if ($standbyMode || moveInFlight || !isMyTurn || board[row][col] !== 0 || isGameOver) return;
-    moveInFlight = true;
+    if ($standbyMode || moveInFlight || !canPlay || board[row][col] !== 0) return;
+    if (!hostUser || !guestUser) return;
+    if (!currentGameId) return;
 
-    board[row][col] = turn === hostUser?.id ? 1 : 2;
-    board = [...board];
+    const clientRequestId = safeRandomUuid();
+    lastMoveRequestId = clientRequestId;
+    lastMoveCell = { row, col };
+    moveInFlight = true;
+    armMoveDeadline();
 
     sounds.play('click');
-    turn = turn === hostUser?.id ? guestUser?.id || '' : hostUser?.id || '';
-
     gameplaysClient.send('play_move', {
-      game_id: currentGameId || $page.params.id,
+      game_id: currentGameId,
       row,
-      col
+      col,
+      client_request_id: clientRequestId
     });
   }
 
@@ -337,7 +446,7 @@
   }
 
   function handleCancelInvitation() {
-    if ($standbyMode || !isUuid(currentGameId)) return;
+    if ($standbyMode || !currentGameId) return;
     gameplaysClient.send('leave_game', { game_id: currentGameId });
     goto(resolve('/lobby'));
   }
@@ -392,7 +501,7 @@
           class:text-[var(--neon-magenta)]={hostUser?.id === turn}
           class:text-glow-magenta={hostUser?.id === turn}
         >
-          {hostUser?.name || 'Unknown'}
+          {hostUser ? sanitizeDisplayName(hostUser.name) || 'Unknown' : 'Unknown'}
         </div>
       </div>
 
@@ -405,7 +514,7 @@
           class:text-[var(--neon-cyan)]={guestUser?.id === turn}
           class:text-glow-cyan={guestUser?.id === turn}
         >
-          {guestUser?.name || 'Unknown'}
+          {guestUser ? sanitizeDisplayName(guestUser.name) || 'Unknown' : 'Unknown'}
         </div>
       </div>
     </div>
@@ -433,12 +542,12 @@
       {:else}
         <div
           class="text-xl tracking-[0.25em] uppercase transition-all duration-300 font-black"
-          class:text-[var(--neon-cyan)]={isMyTurn}
-          class:text-glow-cyan={isMyTurn}
-          class:text-[var(--text-primary)]={!isMyTurn}
-          class:opacity-75={!isMyTurn}
+          class:text-[var(--neon-cyan)]={canPlay}
+          class:text-glow-cyan={canPlay}
+          class:text-[var(--text-primary)]={!canPlay}
+          class:opacity-75={!canPlay}
         >
-          {isMyTurn ? 'Your Turn' : "Opponent's Turn"}
+          {canPlay ? 'Your Turn' : "Opponent's Turn"}
         </div>
       {/if}
     </div>
@@ -451,16 +560,16 @@
           {#each row as cell, cIndex (cIndex)}
             <button
               class="w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300
-                {cell === 0 && isMyTurn
+                {cell === 0 && canPlay
                 ? 'hover:border-[var(--neon-cyan)] hover:border-2 cursor-pointer bg-[var(--cell)] shadow-lg'
                 : ''}
-                {cell === 0 && !isMyTurn ? 'cursor-default bg-[var(--cell)] shadow-lg' : ''}
+                {cell === 0 && !canPlay ? 'cursor-default bg-[var(--cell)] shadow-lg' : ''}
               "
               class:cell-symbol={cell !== 0}
               class:cell-x={cell === 1}
               class:cell-o={cell === 2}
               onclick={() => playMove(rIndex, cIndex)}
-              disabled={$standbyMode || !isMyTurn || cell !== 0 || isGameOver}
+              disabled={$standbyMode || !canPlay || cell !== 0}
               aria-label="Cell {rIndex} {cIndex}"
             >
               {#if cell === 1}

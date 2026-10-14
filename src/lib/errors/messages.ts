@@ -11,6 +11,7 @@ export const USER_MESSAGES: Record<string, string> = {
   INVITATION_EXPIRED: 'Your invitation expired.',
   INVITATION_CANCELED: 'The invitation was canceled.',
   INVITATION_REJECTED: 'The invitation was declined.',
+  MOVE_TIMEOUT: 'Your move timed out. Please try again.',
   AUTH_FAILED: 'Your session ended. Please sign in again.',
   UNKNOWN_ERROR: 'Something went wrong. Please try again.'
 };
