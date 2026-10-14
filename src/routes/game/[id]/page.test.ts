@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
     bootstrapSession: vi.fn(),
     get: vi.fn(),
     goto: vi.fn(),
+    pushToast: vi.fn(),
     handlers,
     standbyMode: {
       subscribe: (subscriber: (value: boolean) => void) => {
@@ -74,6 +75,7 @@ vi.mock('$app/stores', () => ({
 }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+vi.mock('$lib/stores/toasts', () => ({ pushToast: mocks.pushToast }));
 vi.mock('$lib/auth/bootstrap', async (importOriginal) => {
   const original = await importOriginal<typeof import('$lib/auth/bootstrap')>();
   return { ...original, bootstrapSession: mocks.bootstrapSession };
@@ -82,7 +84,20 @@ vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$lib/stores/ws', () => ({
   standbyMode: mocks.standbyMode,
-  globalGameplaysClient: mocks.gameplaysStore
+  globalGameplaysClient: mocks.gameplaysStore,
+  globalPresenceClient: {
+    getOrCreate: vi.fn(() => ({
+      on: vi.fn(() => () => {}),
+      send: vi.fn(),
+      isAlive: () => true,
+      state: {
+        subscribe: (subscriber: (state: string) => void) => {
+          subscriber('connected');
+          return () => {};
+        }
+      }
+    }))
+  }
 }));
 
 const currentUser: User = {
@@ -135,6 +150,7 @@ describe('Game page', () => {
       throw new Error(`Unexpected GET request: ${path}`);
     });
     mocks.goto.mockReset();
+    mocks.pushToast.mockReset();
     mocks.handlers.clear();
     mocks.client.send.mockReset();
     mocks.client.connect.mockReset();
@@ -237,6 +253,16 @@ describe('Game page', () => {
     });
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveTextContent('X');
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveClass('cell-symbol', 'cell-x');
+  });
+
+  it('sends only one move when a cell is clicked twice before the server update', async () => {
+    render(GamePage);
+    const cell = await screen.findByRole('button', { name: 'Cell 0 0' });
+
+    fireEvent.click(cell);
+    fireEvent.click(cell);
+
+    expect(mocks.client.send.mock.calls.filter(([event]) => event === 'play_move')).toHaveLength(1);
   });
 
   it('disables game actions in standby mode', async () => {
