@@ -98,15 +98,15 @@
     >
       History
     </button>
+    <button
+      type="button"
+      disabled={$standbyMode}
+      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+      onclick={handleOpenProfile}
+    >
+      Profile
+    </button>
   </div>
-  <button
-    type="button"
-    disabled={$standbyMode}
-    class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-    onclick={handleOpenProfile}
-  >
-    Profile
-  </button>
 
   {#if error}
     <div
