@@ -90,4 +90,66 @@ describe('usersApi', () => {
       expect(await usersApi.getNames([])).toEqual({});
     });
   });
+  describe('update', () => {
+    it('sends only the provided fields and resolves on 204', async () => {
+      let received: unknown;
+      server.use(
+        http.put('*/api/v2/users/u1', async ({ request }) => {
+          received = await request.json();
+          return new HttpResponse(null, { status: 204 });
+        })
+      );
+
+      await expect(usersApi.update('u1', { name: 'Ada' })).resolves.toBeUndefined();
+
+      expect(received).toEqual({ name: 'Ada' });
+    });
+
+    it('fails with a 409 ApiError when the email is already registered', async () => {
+      server.use(
+        http.put('*/api/v2/users/u1', () =>
+          HttpResponse.json({ message: 'Email is currently registered' }, { status: 409 })
+        )
+      );
+
+      const error = await usersApi
+        .update('u1', { email: 'taken@example.com' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 409 });
+    });
+
+    it('fails with a 403 ApiError when editing someone else', async () => {
+      server.use(
+        http.put('*/api/v2/users/other', () =>
+          HttpResponse.json({ message: 'You can only modify your own account' }, { status: 403 })
+        )
+      );
+
+      const error = await usersApi.update('other', { name: 'Eve' }).catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ status: 403 });
+    });
+  });
+
+  describe('delete', () => {
+    it('resolves on 204', async () => {
+      server.use(http.delete('*/api/v2/users/u1', () => new HttpResponse(null, { status: 204 })));
+
+      await expect(usersApi.delete('u1')).resolves.toBeUndefined();
+    });
+
+    it('fails with a 403 ApiError when deleting someone else', async () => {
+      server.use(
+        http.delete('*/api/v2/users/other', () =>
+          HttpResponse.json({ message: 'You can only delete your own account' }, { status: 403 })
+        )
+      );
+
+      const error = await usersApi.delete('other').catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ status: 403 });
+    });
+  });
 });
