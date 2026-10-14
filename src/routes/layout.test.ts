@@ -1022,6 +1022,46 @@ describe('layout auth guard', () => {
     expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
   });
 
+  it('offers a Go to lobby button when there is no previous page', async () => {
+    currentPath = '/profile';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    publishNavigation('/profile');
+    await waitFor(() => expect(screen.getByTestId('lobby-button')).toBeInTheDocument());
+    expect(screen.getByTestId('lobby-button')).toHaveTextContent('Go to lobby');
+    expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+
+    mockNavigation();
+    await fireEvent.click(screen.getByTestId('lobby-button'));
+
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
+    expect(mocks.play).toHaveBeenCalledWith('click');
+  });
+
+  it('does not offer Go to lobby on the lobby itself', async () => {
+    currentPath = '/lobby';
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    publishNavigation('/lobby');
+    await waitFor(() => expect(screen.getByTestId('logout-button')).toBeInTheDocument());
+    expect(screen.queryByTestId('lobby-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
+  });
+
   it('sends leave_game and waits for game_ended before navigating back', async () => {
     currentPath = '/lobby';
     session.setUser({
