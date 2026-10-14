@@ -11,7 +11,19 @@ export interface User extends PublicUser {
 export type UserResponse = User;
 
 export type GameplayStatus = 'waiting' | 'playing' | 'finished';
-export type MatchResultReason = 'pending' | 'line' | 'draw' | 'abandon' | 'rejected';
+export type MatchResultReason =
+  | 'pending'
+  | 'line'
+  | 'draw'
+  | 'abandon'
+  | 'rejected'
+  | 'expired'
+  | 'host_left'
+  | 'guest_left'
+  | 'target_busy';
+
+export type InvitationState =
+  'pending' | 'queued' | 'accepted' | 'rejected' | 'expired' | 'canceled';
 
 export interface MatchResult {
   winner: string | null;
@@ -24,6 +36,7 @@ export interface Gameplay {
   hostPlayer: string;
   guestPlayer: string | null;
   playerTurn: string;
+  invitationState: InvitationState;
   matchResult: MatchResult | null;
   createdDate: string;
   updatedDate: string;

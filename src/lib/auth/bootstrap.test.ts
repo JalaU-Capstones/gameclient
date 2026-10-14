@@ -218,4 +218,17 @@ describe('bootstrapSession', () => {
     await expect(result).resolves.toEqual({ accessToken: 'access-token', user });
     expect(mocks.refresh).toHaveBeenCalledOnce();
   });
+
+  it('refreshes immediately during a session takeover despite a recent refresh', async () => {
+    vi.useFakeTimers({ now: testTime });
+    vi.spyOn(Date, 'now').mockRestore();
+    vi.setSystemTime(testTime);
+    broadcastSessionRefreshed(testTime);
+
+    const result = bootstrapSession({ skipRefreshThrottle: true });
+    await vi.advanceTimersByTimeAsync(75);
+
+    await expect(result).resolves.toEqual({ accessToken: 'access-token', user });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
 });

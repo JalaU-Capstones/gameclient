@@ -46,7 +46,15 @@ async function refreshAccessToken(generation: number): Promise<string> {
   return accessToken;
 }
 
-async function bootstrap(generation: number): Promise<BootstrapResult> {
+interface BootstrapOptions {
+  /** Refresh immediately even if another refresh happened recently (used by session takeover). */
+  skipRefreshThrottle?: boolean;
+}
+
+async function bootstrap(
+  generation: number,
+  options: BootstrapOptions = {}
+): Promise<BootstrapResult> {
   const release = await acquireSessionLock();
   let lockReleased = false;
   const releaseLock = () => {
@@ -87,7 +95,7 @@ async function bootstrap(generation: number): Promise<BootstrapResult> {
     if (localAccessToken) return { accessToken: localAccessToken, user };
 
     const lastRefreshAt = getLastSessionRefreshAt();
-    if (lastRefreshAt && Date.now() - lastRefreshAt < 30_000) {
+    if (!options.skipRefreshThrottle && lastRefreshAt && Date.now() - lastRefreshAt < 30_000) {
       releaseLock();
       await new Promise((resolveDelay) =>
         setTimeout(resolveDelay, Math.max(1, lastRefreshAt + 30_000 - Date.now()))
@@ -105,10 +113,10 @@ async function bootstrap(generation: number): Promise<BootstrapResult> {
   }
 }
 
-export function bootstrapSession(): Promise<BootstrapResult> {
+export function bootstrapSession(options: BootstrapOptions = {}): Promise<BootstrapResult> {
   if (!inFlight) {
     const generation = sessionGeneration;
-    const request = bootstrap(generation).then((result) => {
+    const request = bootstrap(generation, options).then((result) => {
       ensureSessionGeneration(generation);
       return result;
     });

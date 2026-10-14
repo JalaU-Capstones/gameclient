@@ -8,6 +8,7 @@
   import { currentUser } from '$lib/stores/session';
   import { getOutcome } from '$lib/utils/outcome';
   import type { Outcome } from '$lib/utils/outcome';
+  import { sanitizeDisplayName } from '$lib/utils/text';
 
   let gamesList = $state<GameplayRecord[]>([]);
   let isLoading = $state(true);
@@ -21,8 +22,11 @@
     lost: 'You lost',
     draw: 'Draw',
     in_progress: 'In progress',
-    pending: 'Not started',
-    rejected: 'Rejected'
+    pending: 'Waiting for response',
+    rejected: 'Rejected',
+    expired: 'Expired',
+    canceled: 'Canceled',
+    busy: 'Player busy'
   };
 
   const outcomeClasses: Record<Outcome, string> = {
@@ -31,7 +35,10 @@
     draw: 'border-[var(--neon-yellow)] text-[var(--neon-yellow)] shadow-[var(--glow-yellow)]',
     in_progress: 'border-[var(--text-muted)] text-[var(--text-muted)]',
     pending: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    rejected: 'border-[var(--text-muted)] text-[var(--text-muted)]'
+    rejected: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    expired: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    canceled: 'border-[var(--text-muted)] text-[var(--text-muted)]',
+    busy: 'border-[var(--text-muted)] text-[var(--text-muted)]'
   };
 
   function formatDate(iso: string): string {
@@ -42,7 +49,7 @@
 
   function rivalName(game: GameplayRecord): string {
     const rivalId = game.hostPlayer === myId ? game.guestPlayer : game.hostPlayer;
-    return (rivalId && names[rivalId]) || 'Unknown player';
+    return (rivalId && names[rivalId] && sanitizeDisplayName(names[rivalId])) || 'Unknown player';
   }
 
   async function loadGames() {

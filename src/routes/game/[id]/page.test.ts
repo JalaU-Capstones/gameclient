@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
@@ -8,13 +8,42 @@ import GamePage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (payload?: never) => void>();
+  let invitationState = 'accepted';
+  let omitInvitationState = false;
   let standbyValue = false;
   const standbySubscribers = new Set<(value: boolean) => void>();
+  let currentClient: unknown = null;
+  const clientSubscribers = new Set<(client: unknown) => void>();
   return {
+    gameplaysStore: {
+      getOrCreate: () => currentClient,
+      subscribe: (subscriber: (client: unknown) => void) => {
+        subscriber(currentClient);
+        clientSubscribers.add(subscriber);
+        return () => clientSubscribers.delete(subscriber);
+      }
+    },
+    replaceClient: (client: unknown) => {
+      currentClient = client;
+      clientSubscribers.forEach((subscriber) => subscriber(client));
+    },
     bootstrapSession: vi.fn(),
     get: vi.fn(),
     goto: vi.fn(),
+    pushToast: vi.fn(),
     handlers,
+    get invitationState() {
+      return invitationState;
+    },
+    set invitationState(value: string) {
+      invitationState = value;
+    },
+    get omitInvitationState() {
+      return omitInvitationState;
+    },
+    set omitInvitationState(value: boolean) {
+      omitInvitationState = value;
+    },
     standbyMode: {
       subscribe: (subscriber: (value: boolean) => void) => {
         subscriber(standbyValue);
@@ -60,6 +89,7 @@ vi.mock('$app/stores', () => ({
 }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+vi.mock('$lib/stores/toasts', () => ({ pushToast: mocks.pushToast }));
 vi.mock('$lib/auth/bootstrap', async (importOriginal) => {
   const original = await importOriginal<typeof import('$lib/auth/bootstrap')>();
   return { ...original, bootstrapSession: mocks.bootstrapSession };
@@ -68,7 +98,20 @@ vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
 vi.mock('$lib/audio/sounds', () => ({ sounds: { play: mocks.play } }));
 vi.mock('$lib/stores/ws', () => ({
   standbyMode: mocks.standbyMode,
-  globalGameplaysClient: { getOrCreate: () => mocks.client }
+  globalGameplaysClient: mocks.gameplaysStore,
+  globalPresenceClient: {
+    getOrCreate: vi.fn(() => ({
+      on: vi.fn(() => () => {}),
+      send: vi.fn(),
+      isAlive: () => true,
+      state: {
+        subscribe: (subscriber: (state: string) => void) => {
+          subscriber('connected');
+          return () => {};
+        }
+      }
+    }))
+  }
 }));
 
 const currentUser: User = {
@@ -110,6 +153,7 @@ describe('Game page', () => {
           hostPlayer: 'host',
           guestPlayer: 'guest',
           playerTurn: 'host',
+          ...(mocks.omitInvitationState ? {} : { invitationState: mocks.invitationState }),
           matchResult: null,
           createdDate: '2026-01-01T00:00:00Z',
           updatedDate: '2026-01-01T00:00:00Z'
@@ -120,12 +164,16 @@ describe('Game page', () => {
       throw new Error(`Unexpected GET request: ${path}`);
     });
     mocks.goto.mockReset();
+    mocks.pushToast.mockReset();
     mocks.handlers.clear();
+    mocks.invitationState = 'accepted';
+    mocks.omitInvitationState = false;
     mocks.client.send.mockReset();
     mocks.client.connect.mockReset();
     mocks.play.mockReset();
     mocks.gameplayAlive = true;
     mocks.setStandbyMode(false);
+    mocks.replaceClient(mocks.client);
   });
 
   it('renders an empty board while game data is loading', () => {
@@ -181,6 +229,25 @@ describe('Game page', () => {
     expect(mocks.client.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' });
   });
 
+  it('rebinds to the new gameplay client after a session takeover', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    const takeoverClient = {
+      ...mocks.client,
+      on: vi.fn(() => () => {}),
+      send: vi.fn(),
+      connect: vi.fn()
+    };
+    mocks.replaceClient(null);
+    mocks.replaceClient(takeoverClient);
+
+    await waitFor(() =>
+      expect(takeoverClient.send).toHaveBeenCalledWith('subscribe_game', { game_id: 'game-123' })
+    );
+    expect(takeoverClient.on).toHaveBeenCalledWith('board_updated', expect.any(Function));
+  });
+
   it('disables board cells when it is the opponent’s turn', async () => {
     session.setUser({ ...currentUser, id: guest.id, name: guest.name });
     render(GamePage);
@@ -193,15 +260,125 @@ describe('Game page', () => {
   it('sends a move when the current player clicks an empty cell', async () => {
     render(GamePage);
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Cell 0 0' }));
+    const cell = await screen.findByRole('button', { name: 'Cell 0 0' });
+    await userEvent.setup().click(cell);
 
-    expect(mocks.client.send).toHaveBeenCalledWith('play_move', {
-      game_id: 'game-123',
-      row: 0,
-      col: 0
+    expect(mocks.client.send).toHaveBeenCalledWith(
+      'play_move',
+      expect.objectContaining({
+        game_id: 'game-123',
+        row: 0,
+        col: 0,
+        client_request_id: expect.any(String)
+      })
+    );
+
+    emit('board_updated', {
+      board: [
+        [1, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+      ],
+      turn: 'guest'
     });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveTextContent('X');
+      expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveClass('cell-symbol', 'cell-x');
+    });
+  });
+
+  it('sends only one move when a cell is clicked twice before the server update', async () => {
+    render(GamePage);
+    const cell = await screen.findByRole('button', { name: 'Cell 0 0' });
+
+    fireEvent.click(cell);
+    fireEvent.click(cell);
+
+    expect(mocks.client.send.mock.calls.filter(([event]) => event === 'play_move')).toHaveLength(1);
+  });
+
+  it('enables the host board when the pending invitation is accepted', async () => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+
+    expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled();
+    expect(screen.getByText("Opponent's Turn")).toBeInTheDocument();
+
+    emit('invitation_accepted', {
+      board: startingBoard,
+      turn: 'host'
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Invitation pending')).not.toBeInTheDocument();
+      expect(screen.getByText('Your Turn')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeEnabled();
+    });
+  });
+
+  it.each([
+    ['invitation_rejected', 'INVITATION_REJECTED'],
+    ['invitation_expired', 'INVITATION_EXPIRED'],
+    ['invitation_canceled', 'INVITATION_CANCELED']
+  ])('ends the pending invitation on %s', async (event, messageCode) => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+    expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
+
+    emit(event);
+
+    await waitFor(() => expect(screen.queryByText('Invitation pending')).not.toBeInTheDocument());
+    expect(mocks.pushToast).toHaveBeenCalledWith(
+      'warning',
+      messageCode === 'INVITATION_REJECTED'
+        ? 'The invitation was declined.'
+        : messageCode === 'INVITATION_EXPIRED'
+          ? 'Your invitation expired.'
+          : 'The invitation was canceled.'
+    );
+    expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled();
+  });
+
+  it('does not revive the board when acceptance arrives after game_ended', async () => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+    await screen.findByText('Invitation pending');
+    const finalBoard = [
+      [1, 0, 0],
+      [0, 2, 0],
+      [0, 0, 0]
+    ];
+
+    emit('game_ended', { winner: 'guest', reason: 'abandon', board: finalBoard });
+    emit('invitation_accepted', {
+      board: startingBoard,
+      turn: 'host'
+    });
+
+    expect(await screen.findByText('YOU LOST')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveTextContent('X');
-    expect(screen.getByRole('button', { name: 'Cell 0 0' })).toHaveClass('cell-symbol', 'cell-x');
+    expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled();
+    expect(screen.queryByText('Your Turn')).not.toBeInTheDocument();
+  });
+
+  it('infers an accepted invitation from a legacy gameplay response', async () => {
+    mocks.omitInvitationState = true;
+    render(GamePage);
+
+    const cell = await screen.findByRole('button', { name: 'Cell 0 0' });
+    await userEvent.setup().click(cell);
+
+    expect(mocks.client.send).toHaveBeenCalledWith(
+      'play_move',
+      expect.objectContaining({
+        game_id: 'game-123',
+        row: 0,
+        col: 0,
+        client_request_id: expect.any(String)
+      })
+    );
   });
 
   it('disables game actions in standby mode', async () => {
@@ -221,12 +398,24 @@ describe('Game page', () => {
     window.innerWidth = 360;
     render(GamePage);
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Cell 0 0' }));
-    const symbol = screen.getByRole('button', { name: 'Cell 0 0' });
-    const board = symbol.closest('.grid-cols-3');
+    const cell = await screen.findByRole('button', { name: 'Cell 0 0' });
+    await userEvent.setup().click(cell);
+    emit('board_updated', {
+      board: [
+        [1, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+      ],
+      turn: 'guest'
+    });
 
-    expect(symbol).toHaveClass('cell-symbol');
-    expect(board).toHaveClass('w-[min(90vw,400px)]');
+    await waitFor(() => {
+      const symbol = screen.getByRole('button', { name: 'Cell 0 0' });
+      const board = symbol.closest('.grid-cols-3');
+
+      expect(symbol).toHaveClass('cell-symbol');
+      expect(board).toHaveClass('w-[min(90vw,400px)]');
+    });
   });
 
   it('applies the board, winner, and reason received with game_ended', async () => {

@@ -8,8 +8,11 @@
 
   // Prefilled from the logged-in user (GET /api/v2/auth/me, already in the session store).
   // The password is never shown: the backend only stores a hash and never returns it.
-  let inputName = $state($currentUser?.name ?? '');
-  let inputEmail = $state($currentUser?.email ?? '');
+  // Writable $derived: on a reload the session hydrates AFTER this page mounts, so the field
+  // follows the session once it arrives, and still keeps what the user types until the
+  // session value itself changes.
+  let inputName = $derived($currentUser?.name ?? '');
+  let inputEmail = $derived($currentUser?.email ?? '');
   let inputPassword = $state(''); // optional: empty = keep current password
   let visible = $state(false);
   let error = $state('');

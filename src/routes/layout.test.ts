@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
   subscribers: [] as Array<(value: PageSnapshot) => void>,
   gameplayConnected: false,
   gameplayHandlers: new Map<string, (payload?: unknown) => void>(),
+  gameplayStoreClient: null as unknown,
+  gameplayStoreSubscribers: new Set<(client: unknown) => void>(),
   sessionMessageHandlers: new Set<
     (message: {
       type: string;
@@ -49,6 +51,7 @@ const mocks = vi.hoisted(() => ({
     }) => void
   >(),
   presenceHandlers: new Map<string, (payload?: unknown) => void>(),
+  presenceStoreSubscribers: new Set<(client: unknown) => void>(),
   presenceAlive: false,
   presenceConnect: vi.fn(),
   presenceSend: vi.fn(),
@@ -142,6 +145,11 @@ function publishNavigation(pathname: string) {
   for (const callback of mocks.afterNavigateCallbacks) {
     callback({ to: { url: { pathname } } });
   }
+}
+
+function publishGameplayClient(client: unknown) {
+  mocks.gameplayStoreClient = client;
+  mocks.gameplayStoreSubscribers.forEach((subscriber) => subscriber(client));
 }
 
 function mockNavigation() {
@@ -252,13 +260,36 @@ vi.mock('$app/paths', () => ({
 
 vi.mock('$lib/stores/ws', () => ({
   globalGameplaysClient: {
-    getOrCreate: () => mocks.gameplayClient,
-    disconnect: mocks.gameplayDisconnect,
+    subscribe: (subscriber: (client: unknown) => void) => {
+      mocks.gameplayStoreSubscribers.add(subscriber);
+      subscriber(mocks.gameplayStoreClient);
+      return () => mocks.gameplayStoreSubscribers.delete(subscriber);
+    },
+    getOrCreate: () => {
+      const client = mocks.gameplayStoreClient || mocks.gameplayClient;
+      publishGameplayClient(client);
+      return client;
+    },
+    disconnect: () => {
+      mocks.gameplayDisconnect();
+      publishGameplayClient(null);
+    },
     setReadOnlyMode: mocks.gameplayClient.setReadOnlyMode
   },
   globalPresenceClient: {
-    getOrCreate: () => mocks.presenceClient,
-    disconnect: mocks.presenceDisconnect,
+    subscribe: (subscriber: (client: unknown) => void) => {
+      mocks.presenceStoreSubscribers.add(subscriber);
+      subscriber(null);
+      return () => mocks.presenceStoreSubscribers.delete(subscriber);
+    },
+    getOrCreate: () => {
+      mocks.presenceStoreSubscribers.forEach((subscriber) => subscriber(mocks.presenceClient));
+      return mocks.presenceClient;
+    },
+    disconnect: () => {
+      mocks.presenceDisconnect();
+      mocks.presenceStoreSubscribers.forEach((subscriber) => subscriber(null));
+    },
     setReadOnlyMode: mocks.presenceClient.setReadOnlyMode
   },
   requestPresenceReconnect: mocks.requestPresenceReconnect,
@@ -311,6 +342,8 @@ describe('layout auth guard', () => {
     mocks.resolve.mockImplementation((path: string) => path);
     mocks.unlock.mockReset();
     mocks.gameplayConnected = false;
+    mocks.gameplayStoreClient = null;
+    mocks.gameplayStoreSubscribers.clear();
     mocks.gameplayHandlers.clear();
     mocks.sessionMessageHandlers.clear();
     mocks.gameplayClient.send.mockReset();
@@ -703,6 +736,77 @@ describe('layout auth guard', () => {
     expect(mocks.gameplayClient.connect).toHaveBeenCalledWith('access-token');
   });
 
+  it('rebinds game_created and invitation handlers to a replacement gameplay client', async () => {
+    const gameId = '123e4567-e89b-42d3-a456-426614174000';
+    const hostId = '123e4567-e89b-42d3-a456-426614174001';
+    const hostUser = {
+      id: hostId,
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    };
+    mocks.get.mockResolvedValue(hostUser);
+    session.setUser(hostUser);
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.gameplayHandlers.has('game_created')).toBe(true));
+    const previousGameCreatedHandler = mocks.gameplayHandlers.get('game_created');
+    const replacementClient = {
+      ...mocks.gameplayClient,
+      on: vi.fn((event: string, handler: (payload?: unknown) => void) => {
+        mocks.gameplayHandlers.set(event, handler);
+        return () => {
+          if (mocks.gameplayHandlers.get(event) === handler) mocks.gameplayHandlers.delete(event);
+        };
+      })
+    };
+
+    publishGameplayClient(replacementClient);
+
+    expect(mocks.gameplayHandlers.get('game_created')).not.toBe(previousGameCreatedHandler);
+    mocks.goto.mockClear();
+    mocks.gameplayHandlers.get('game_created')?.({
+      game_id: gameId,
+      turn: '123e4567-e89b-42d3-a456-426614174003'
+    });
+    expect(mocks.goto).not.toHaveBeenCalled();
+    mocks.gameplayHandlers.get('game_created')?.({ game_id: gameId, turn: hostId });
+    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(`/game/${gameId}`));
+    mocks.gameplayHandlers.get('invitation_received')?.({
+      game_id: gameId,
+      host: { id: '123e4567-e89b-42d3-a456-426614174002', name: 'Guest' }
+    });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('stays active when its own takeover revokes a socket opened during the handover', async () => {
+    const user = userEvent.setup();
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+    mocks.takeoverSession.mockImplementation(async () => {
+      mocks.gameplayHandlers.get('closed')?.({ code: 4409, reason: 'session_replaced' });
+    });
+
+    render(Layout, { props: { children: stubChild } });
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledOnce());
+    mocks.presenceHandlers.get('closed')?.({ code: 4409, reason: 'session_already_active' });
+    await screen.findByRole('dialog');
+
+    await user.click(screen.getByRole('button', { name: 'Continue here' }));
+    await waitFor(() => expect(mocks.presenceConnect).toHaveBeenCalledTimes(2));
+    mocks.presenceHandlers.get('auth_ok')?.();
+    await waitFor(() => expect(mocks.gameplayClient.connect).toHaveBeenCalledWith('access-token'));
+    mocks.gameplayHandlers.get('auth_ok')?.();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('standby-message')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveProperty('inert', false);
+  });
+
   it('shows an error in the conflict modal when takeover fails', async () => {
     const user = userEvent.setup();
     mocks.takeoverSession.mockRejectedValue(new Error('takeover failed'));
@@ -912,12 +1016,14 @@ describe('layout auth guard', () => {
       currentPath = path;
       currentSearch = search;
       const clearSpy = vi.spyOn(session, 'clear');
-      session.setUser({
+      const user = {
         id: '1',
         name: 'Ada',
         email: 'ada@example.com',
         registerDate: '2026-01-01T00:00:00Z'
-      });
+      };
+      session.setUser(user);
+      mocks.get.mockResolvedValue(user);
 
       render(Layout, { props: { children: stubChild } });
 

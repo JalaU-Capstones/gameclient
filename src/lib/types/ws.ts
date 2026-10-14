@@ -26,3 +26,24 @@ export interface AuthPayload {
 export interface AuthOkPayload {
   user_id: string;
 }
+
+export interface InvitationQueuedPayload {
+  game_id: string;
+  guest_id: string;
+  position: number;
+}
+
+export interface InvitationExpiredPayload {
+  game_id: string;
+  reason: 'timeout' | 'target_busy' | 'target_unavailable';
+}
+
+export interface InvitationCanceledPayload {
+  game_id: string;
+  reason: 'host_left' | 'guest_left' | 'host_busy';
+}
+
+export interface UserStatusPayload {
+  user_id: string;
+  status: 'playing' | 'available';
+}

@@ -3,7 +3,9 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '$lib/stores/session';
+import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
 import type { PublicUser, User } from '$lib/types/api';
+import InvitationHost from '$lib/components/InvitationHost.svelte';
 import LobbyPage from './+page.svelte';
 
 const mocks = vi.hoisted(() => {
@@ -104,24 +106,34 @@ vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$lib/stores/ws', () => ({
   standbyMode: mocks.standbyMode,
   globalPresenceClient: {
+    subscribe: (subscriber: (client: typeof mocks.presenceClient | null) => void) => {
+      subscriber(mocks.presenceClient);
+      return () => {};
+    },
     getOrCreate: mocks.getPresenceClient,
     disconnect: mocks.presenceClient.disconnect
   },
   globalGameplaysClient: {
+    subscribe: (subscriber: (client: typeof mocks.gameplayClient | null) => void) => {
+      subscriber(mocks.gameplayClient);
+      return () => {};
+    },
     getOrCreate: mocks.getGameplayClient,
     disconnect: mocks.gameplayClient.disconnect
   },
   requestPresenceReconnect: mocks.requestPresenceReconnect
 }));
 
+const adaId = '123e4567-e89b-42d3-a456-426614174000';
+const bobId = '123e4567-e89b-42d3-a456-426614174001';
 const ada: User = {
-  id: 'ada',
+  id: adaId,
   name: 'Ada',
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
 const bob: PublicUser = {
-  id: 'bob',
+  id: bobId,
   name: 'Bob'
 };
 
@@ -129,18 +141,22 @@ function emit(handlers: Map<string, (payload?: never) => void>, event: string, p
   handlers.get(event)?.(payload as never);
 }
 
+function renderLobbyWithInvitationHost() {
+  render(LobbyPage);
+  render(InvitationHost);
+}
+
 describe('Lobby page', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     session.reset();
     session.setUser(ada);
     mocks.bootstrapSession.mockReset().mockResolvedValue({ accessToken: 'token', user: ada });
     mocks.get.mockReset().mockImplementation(async (path: string) => {
-      if (path.endsWith('/bob')) return bob;
+      if (path.includes(bobId)) return bob;
       return ada;
     });
     mocks.goto.mockReset();
     mocks.play.mockReset();
-    mocks.presenceHandlers.clear();
     mocks.gameplayHandlers.clear();
     mocks.sessionMessageHandlers.clear();
     mocks.requestPresenceReconnect.mockReset();
@@ -158,13 +174,18 @@ describe('Lobby page', () => {
     mocks.setPresenceState('disconnected');
     mocks.setPresenceAlive(false);
     mocks.setStandbyMode(false);
+    onlinePlayers.reset();
+    onlinePlayers.initialize();
+    emit(mocks.presenceHandlers, 'online_users', { users: [] });
+    await waitFor(() => expect(onlinePlayers.users).toEqual([]));
   });
 
   it('subscribes to presence without owning or connecting the socket', async () => {
     const view = render(LobbyPage);
 
     await waitFor(() => expect(mocks.bootstrapSession).toHaveBeenCalledOnce());
-    expect(mocks.requestPresenceReconnect).toHaveBeenCalledOnce();
+    expect(mocks.requestPresenceReconnect).not.toHaveBeenCalled();
+    expect(mocks.getPresenceClient).not.toHaveBeenCalled();
     expect(mocks.presenceClient.connect).not.toHaveBeenCalled();
     expect(mocks.presenceClient.disconnect).not.toHaveBeenCalled();
 
@@ -175,62 +196,50 @@ describe('Lobby page', () => {
 
   it('requests and displays the online user list from the layout-owned client', async () => {
     render(LobbyPage);
-    await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
-    expect(screen.getByText('Loading players...')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for challengers...')).toBeInTheDocument();
 
     mocks.setPresenceState('connected');
-    expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users');
-    emit(mocks.presenceHandlers, 'online_users', { users: ['bob'] });
+    expect(mocks.presenceClient.send).not.toHaveBeenCalledWith('list_online_users');
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
 
-    expect(await screen.findByText('Bob')).toBeInTheDocument();
+    await waitFor(() => expect(onlinePlayers.users.map((user) => user.name)).toContain('Bob'));
     expect(screen.getByRole('button', { name: 'Invite' })).toBeInTheDocument();
   });
 
   it('fetches public user records by ID without requiring private fields', async () => {
     render(LobbyPage);
     await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
-    emit(mocks.presenceHandlers, 'online_users', { users: ['bob'] });
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
 
-    expect(await screen.findByText('Bob')).toBeInTheDocument();
-    expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/bob');
+    await waitFor(() => expect(onlinePlayers.users.map((user) => user.name)).toContain('Bob'));
+    expect(mocks.get).toHaveBeenCalledWith(`/api/v2/users/${bobId}`);
     expect(screen.queryByText('bob@example.com')).not.toBeInTheDocument();
   });
 
-  it('renders presence lists broadcast from the owner tab', async () => {
+  it('filters the current user from the shared online list', async () => {
     render(LobbyPage);
-    await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
-    mocks.sessionMessageHandlers.forEach((handler) =>
-      handler({ type: 'presence-users', userIds: ['bob'] })
-    );
+    emit(mocks.presenceHandlers, 'online_users', { users: [adaId, bobId] });
 
-    expect(await screen.findByText('Bob')).toBeInTheDocument();
+    await waitFor(() => expect(onlinePlayers.users.map((user) => user.name)).toContain('Bob'));
+    expect(screen.queryByText('Ada')).not.toBeInTheDocument();
   });
 
-  it('renders a direct presence list response addressed to this tab', async () => {
+  it('renders shared online users broadcast by the presence client', async () => {
     render(LobbyPage);
-    await waitFor(() => expect(mocks.presenceHandlers.has('online_users')).toBe(true));
-    mocks.sessionMessageHandlers.forEach((handler) =>
-      handler({ type: 'presence-users-direct', tabId: 'lobby-tab', userIds: ['bob'] })
-    );
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
 
-    expect(await screen.findByText('Bob')).toBeInTheDocument();
+    await waitFor(() => expect(onlinePlayers.users.map((user) => user.name)).toContain('Bob'));
   });
 
-  it('shows a direct presence snapshot received before the 2.5-second loading timeout', async () => {
-    vi.useFakeTimers();
-    try {
-      render(LobbyPage);
-      await vi.advanceTimersByTimeAsync(2400);
-      mocks.sessionMessageHandlers.forEach((handler) =>
-        handler({ type: 'presence-users-direct', tabId: 'lobby-tab', userIds: ['bob'] })
-      );
-      await vi.advanceTimersByTimeAsync(0);
+  it('updates playing status from shared presence events', async () => {
+    render(LobbyPage);
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
+    await waitFor(() => expect(onlinePlayers.users.map((user) => user.name)).toContain('Bob'));
 
-      expect(screen.getAllByText('Bob')).not.toHaveLength(0);
-      expect(screen.queryByText('Loading players...')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    emit(mocks.presenceHandlers, 'user_status', { user_id: bobId, status: 'playing' });
+
+    await waitFor(() => expect(onlinePlayers.playingIds.has(bobId)).toBe(true));
+    expect(await screen.findByText('Playing')).toBeInTheDocument();
   });
 
   it('renders a sanitized gameplay error without exposing the backend message', async () => {
@@ -247,83 +256,102 @@ describe('Lobby page', () => {
     expect(screen.queryByText(/b2f40334-48ad-4e82-b2f4-03f2d1c1f111/)).not.toBeInTheDocument();
   });
 
-  it('uses a delayed fallback and safety timeout without leaving loading forever', async () => {
-    vi.useFakeTimers();
-    try {
-      render(LobbyPage);
-      expect(mocks.announcePresenceListRequest).toHaveBeenCalledWith('lobby-tab');
-      await vi.advanceTimersByTimeAsync(1200);
-      expect(mocks.requestPresenceReconnect).toHaveBeenCalledTimes(2);
-      expect(mocks.announcePresenceListRequest).toHaveBeenCalledTimes(2);
+  it('refreshes presence from the shared store on auth_ok', () => {
+    mocks.setPresenceAlive(true);
 
-      await vi.advanceTimersByTimeAsync(1300);
-      expect(screen.getByText('Waiting for challengers...')).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    emit(mocks.presenceHandlers, 'auth_ok');
+
+    expect(mocks.presenceClient.send).toHaveBeenCalledTimes(1);
+    expect(mocks.presenceClient.send).toHaveBeenCalledWith('list_online_users');
   });
 
-  it('sends an invitation and displays the waiting state', async () => {
+  it('sends an invitation with a client request ID', async () => {
     render(LobbyPage);
     mocks.setPresenceState('connected');
-    emit(mocks.presenceHandlers, 'online_users', { users: ['bob'] });
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
     await userEvent.click(await screen.findByRole('button', { name: 'Invite' }));
 
-    expect(mocks.gameplayClient.send).toHaveBeenCalledWith('create_game', { guest_id: 'bob' });
-    expect(screen.getByText('Waiting for opponent...')).toBeInTheDocument();
+    expect(mocks.gameplayClient.send).toHaveBeenCalledWith(
+      'create_game',
+      expect.objectContaining({
+        guest_id: bobId,
+        client_request_id: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+      })
+    );
+  });
+
+  it('keeps the lobby free of local waiting modal state when the route owns the game_created handler', async () => {
+    render(LobbyPage);
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
+    await userEvent.click(await screen.findByRole('button', { name: 'Invite' }));
+
+    expect(mocks.gameplayClient.send).toHaveBeenCalledWith(
+      'create_game',
+      expect.objectContaining({ guest_id: bobId })
+    );
+    expect(screen.queryByText('Waiting for opponent...')).not.toBeInTheDocument();
   });
 
   it('disables lobby actions while standby still receives presence updates', async () => {
-    render(LobbyPage);
+    renderLobbyWithInvitationHost();
     await waitFor(() => expect(mocks.gameplayHandlers.has('invitation_received')).toBe(true));
     mocks.setStandbyMode(true);
-    mocks.sessionMessageHandlers.forEach((handler) =>
-      handler({ type: 'presence-users', userIds: ['bob'] })
-    );
+    emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
 
     expect(await screen.findByRole('button', { name: 'Invite' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'History' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeDisabled();
 
     emit(mocks.gameplayHandlers, 'invitation_received', {
-      game_id: 'game-1',
-      host: { id: 'bob', name: 'Bob' }
+      game_id: '123e4567-e89b-42d3-a456-426614174002',
+      host: { id: bobId, name: 'Bob' }
     });
-    expect(await screen.findByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
-    expect(mocks.gameplayClient.send).not.toHaveBeenCalledWith('create_game', {
-      guest_id: 'bob'
-    });
+    expect(mocks.gameplayClient.send).not.toHaveBeenCalledWith(
+      'create_game',
+      expect.objectContaining({ guest_id: bobId })
+    );
     expect(screen.getAllByText('Bob')).not.toHaveLength(0);
   });
 
   it('accepts an invitation and navigates to the accepted game', async () => {
-    render(LobbyPage);
+    renderLobbyWithInvitationHost();
     await waitFor(() => expect(mocks.gameplayHandlers.has('invitation_received')).toBe(true));
     emit(mocks.gameplayHandlers, 'invitation_received', {
-      game_id: 'game-1',
-      host: { id: 'bob', name: 'Bob' }
+      game_id: '123e4567-e89b-42d3-a456-426614174002',
+      host: { id: bobId, name: 'Bob' }
     });
-    await userEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Accept' }));
 
     expect(mocks.gameplayClient.send).toHaveBeenCalledWith('accept_invitation', {
-      game_id: 'game-1'
+      game_id: '123e4567-e89b-42d3-a456-426614174002'
     });
-    emit(mocks.gameplayHandlers, 'invitation_accepted', { game_id: 'game-1' });
-    await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/game/game-1'));
+    emit(mocks.gameplayHandlers, 'invitation_accepted', {
+      game_id: '123e4567-e89b-42d3-a456-426614174002'
+    });
+    await waitFor(() =>
+      expect(mocks.goto).toHaveBeenCalledWith('/game/123e4567-e89b-42d3-a456-426614174002')
+    );
   });
 
   it('declines an invitation and removes its dialog', async () => {
-    render(LobbyPage);
+    renderLobbyWithInvitationHost();
     await waitFor(() => expect(mocks.gameplayHandlers.has('invitation_received')).toBe(true));
     emit(mocks.gameplayHandlers, 'invitation_received', {
-      game_id: 'game-1',
-      host: { id: 'bob', name: 'Bob' }
+      game_id: '123e4567-e89b-42d3-a456-426614174002',
+      host: { id: bobId, name: 'Bob' }
     });
-    await userEvent.click(await screen.findByRole('button', { name: 'Decline' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument()
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Decline' }));
 
     expect(mocks.gameplayClient.send).toHaveBeenCalledWith('reject_invitation', {
-      game_id: 'game-1'
+      game_id: '123e4567-e89b-42d3-a456-426614174002'
     });
     expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
   });

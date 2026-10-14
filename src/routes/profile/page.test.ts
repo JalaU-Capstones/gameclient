@@ -23,7 +23,7 @@ const ada = {
   id: '1',
   name: 'Ada',
   email: 'ada@example.com',
-  registerDate: '2026-01-01T00:00:00Z'
+  registerDate: '2026-01-15T10:00:00Z'
 };
 
 describe('Profile page', () => {
@@ -41,10 +41,36 @@ describe('Profile page', () => {
     expect(screen.getByPlaceholderText('Leave empty to keep current')).toHaveValue('');
   });
 
+  it('fills the fields once the session hydrates after a reload', async () => {
+    session.reset();
+    render(ProfilePage);
+
+    expect(screen.getByPlaceholderText('Name')).toHaveValue('');
+
+    session.setUser(ada);
+
+    await waitFor(() => expect(screen.getByPlaceholderText('Name')).toHaveValue('Ada'));
+    expect(screen.getByPlaceholderText('Email')).toHaveValue('ada@example.com');
+    expect(screen.getByRole('button', { name: 'Update account' })).toBeDisabled();
+  });
+
+  it('does not overwrite what the user is typing when the session emits again', async () => {
+    const user = userEvent.setup();
+    render(ProfilePage);
+
+    await user.type(screen.getByPlaceholderText('Name'), 'x');
+    session.setUser({ ...ada });
+
+    expect(screen.getByPlaceholderText('Name')).toHaveValue('Adax');
+  });
+
   it('shows the member-since date', () => {
     render(ProfilePage);
 
-    expect(screen.getByText(/Member since/)).toHaveTextContent('Jan 1, 2026');
+    const expected = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(
+      new Date(ada.registerDate)
+    );
+    expect(screen.getByText(/Member since/)).toHaveTextContent(`Member since ${expected}`);
   });
 
   it('disables Update until something changes', async () => {

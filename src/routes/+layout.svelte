@@ -50,7 +50,12 @@
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
   import SessionReplacedBanner from '$lib/components/SessionReplacedBanner.svelte';
+  import ToastHost from '$lib/components/ToastHost.svelte';
+  import InvitationHost from '$lib/components/InvitationHost.svelte';
+  import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
+  import { isUuid } from '$lib/utils/uuid';
+  import { sanitizeDisplayName } from '$lib/utils/text';
   import '../app.css';
 
   const PUBLIC_ROUTES = ['/login', '/register'];
@@ -66,7 +71,7 @@
   let takeoverError = $state('');
   let isTakingOver = $state(false);
   let isRetryingSession = $state(false);
-  let sessionReplacedRef = false;
+  let sessionReplacedRef = $state(false);
   let takeoverSessionUpdated = false;
   const shownCloseCodes = new SvelteSet<number>();
   let genericConnectionAlertShown = false;
@@ -75,8 +80,12 @@
   let presenceStarting: Promise<void> | null = null;
   let presenceOwnerRelease: (() => void) | null = null;
   let gameplayOwnerRelease: (() => void) | null = null;
+  let lastEnsurePath: string | null = null;
+  let lastEnsureSessionConflict = false;
+  let lastEnsureSessionReplaced = false;
   let presenceClient: ReturnType<typeof globalPresenceClient.getOrCreate> | null = null;
   let presenceUnsubscribers: (() => void)[] = [];
+  let stopGameCreated: (() => void) | undefined;
   const monitoredSocketClients = new WeakSet<object>();
   const sessionConflictPaths = new SvelteSet<string>();
   const sessionRetryingPaths = new SvelteSet<string>();
@@ -256,6 +265,8 @@
       if (path) sessionConflictPaths.add(path);
       beginTakeoverRequest();
     } else if (reason === 'session_replaced') {
+      if (isTakingOver) return;
+      lastEnsurePath = null;
       takeoverHandshake?.cancel();
       takeoverHandshake = null;
       sessionReplaced = true;
@@ -279,7 +290,7 @@
     presenceStarting = (async () => {
       const result =
         forceRefresh || !presenceAccessToken
-          ? await bootstrapSession()
+          ? await bootstrapSession({ skipRefreshThrottle: expectedTakeoverAttempt !== undefined })
           : { accessToken: presenceAccessToken };
       const accessToken = result?.accessToken;
       if (isStaleTakeover()) return;
@@ -498,6 +509,7 @@
   }
 
   async function handleTakeover() {
+    lastEnsurePath = null;
     isTakingOver = true;
     takeoverSessionUpdated = false;
     takeoverError = '';
@@ -566,6 +578,9 @@
       sessionRetryingPaths.clear();
       isRetryingSession = false;
       sessionReplaced = false;
+      lastEnsurePath = $page.url.pathname;
+      lastEnsureSessionConflict = sessionConflict;
+      lastEnsureSessionReplaced = sessionReplacedRef;
     } catch (err) {
       if (attempt !== takeoverAttempt) return;
       takeoverAttempt += 1;
@@ -598,6 +613,7 @@
   }
 
   function handleConflictDismiss() {
+    lastEnsurePath = null;
     takeoverAttempt += 1;
     takeoverHandshake?.cancel();
     takeoverHandshake = null;
@@ -733,6 +749,7 @@
     const unsubscribeMessages = subscribeSessionMessages((message) => {
       if (message.type === 'takeover-confirmed' && message.ownerTabId === tabId) {
         if (pendingTakeoverRequesters.get(message.requestId) !== message.tabId) return;
+        lastEnsurePath = null;
         sessionReplaced = true;
         setStandbyMode(true);
         sessionConflict = false;
@@ -754,6 +771,7 @@
           releaseAllLocalLocks();
           globalPresenceClient.disconnect();
           globalGameplaysClient.disconnect();
+          lastEnsurePath = null;
           broadcastTakeoverReady(tabId, message.tabId, message.requestId);
         })().catch((error: unknown) => {
           sessionReplaced = false;
@@ -833,9 +851,35 @@
     if (!get(isAuthenticated)) globalPresenceClient.disconnect();
   });
 
-  onMount(async () => {
-    if ($isHydrated) return;
+  onMount(() => {
+    onlinePlayers.initialize();
+    const stop = globalGameplaysClient.subscribe((client) => {
+      stopGameCreated?.();
+      stopGameCreated = undefined;
+      if (!client) return;
+      stopGameCreated = client.on(
+        'game_created',
+        (payload: { game_id?: string; turn?: string } | undefined) => {
+          if (
+            !payload ||
+            !isUuid(payload.game_id) ||
+            !isUuid(payload.turn) ||
+            payload.turn !== get(currentUser)?.id
+          ) {
+            return;
+          }
+          goto(resolve(`/game/${payload.game_id}`));
+        }
+      );
+    });
+    return () => {
+      stop();
+      stopGameCreated?.();
+      stopGameCreated = undefined;
+    };
+  });
 
+  onMount(async () => {
     if (import.meta.env.DEV) console.debug('[layout] hydration start');
     session.setLoading(true);
     try {
@@ -861,12 +905,22 @@
     }
     if (!$isHydrated) return;
     if (!$isAuthenticated) {
+      lastEnsurePath = null;
       setStandbyMode(false);
       releaseLayoutPresence(true);
       presenceAccessToken = '';
       setLastPresenceToken(null);
       return;
     }
+    if (isTakingOver) return;
+    const path = $page.url.pathname;
+    const sessionStateChanged =
+      lastEnsureSessionConflict !== sessionConflict ||
+      lastEnsureSessionReplaced !== sessionReplacedRef;
+    if (lastEnsurePath === path && !sessionStateChanged && presenceOwnerRelease !== null) return;
+    lastEnsurePath = path;
+    lastEnsureSessionConflict = sessionConflict;
+    lastEnsureSessionReplaced = sessionReplacedRef;
     void ensurePresence();
   });
 
@@ -936,7 +990,7 @@
       <GameTitle text="TIC TAC TOE" />
       {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
         <span class="text-[var(--neon-cyan)] text-xs uppercase tracking-widest mt-1 opacity-80">
-          Welcome, {$currentUser.name}
+          Welcome, {sanitizeDisplayName($currentUser.name)}
         </span>
       {/if}
     </div>
@@ -986,6 +1040,8 @@
       {takeoverError}
     />
   {/if}
+  <ToastHost />
+  <InvitationHost disabled={isStandby || sessionConflict} />
   <main
     bind:this={mainElement}
     class="mx-auto max-w-6xl px-6 pb-10"
