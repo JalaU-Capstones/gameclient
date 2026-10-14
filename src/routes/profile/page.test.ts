@@ -8,11 +8,17 @@ import ProfilePage from './+page.svelte';
 
 const mocks = vi.hoisted(() => ({
   play: vi.fn(),
-  update: vi.fn()
+  update: vi.fn(),
+  remove: vi.fn(),
+  logout: vi.fn()
 }));
 
 vi.mock('$lib/api/user', () => ({
-  usersApi: { update: mocks.update }
+  usersApi: { update: mocks.update, delete: mocks.remove }
+}));
+
+vi.mock('$lib/auth/logout', () => ({
+  performLogout: mocks.logout
 }));
 
 vi.mock('$lib/audio/sounds', () => ({
@@ -31,6 +37,9 @@ describe('Profile page', () => {
     session.setUser(ada);
     mocks.play.mockReset();
     mocks.update.mockReset();
+    mocks.remove.mockReset();
+    mocks.logout.mockReset();
+    mocks.logout.mockResolvedValue(undefined);
   });
 
   it('prefills name and email from the session and never shows a password', () => {
@@ -201,6 +210,74 @@ describe('Profile page', () => {
       let stored: { name: string } | null = null;
       session.subscribe((state) => (stored = state.user))();
       expect(stored).toMatchObject({ name: 'Ada' });
+    });
+  });
+  describe('deleting the account', () => {
+    async function openConfirmation() {
+      const user = userEvent.setup();
+      render(ProfilePage);
+      await user.click(screen.getByRole('button', { name: 'Delete account' }));
+      return user;
+    }
+
+    it('deletes the account and then logs the user out', async () => {
+      mocks.remove.mockResolvedValue(undefined);
+      const user = await openConfirmation();
+
+      await user.click(screen.getByRole('button', { name: 'Yes, delete it' }));
+
+      await waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(1));
+      expect(mocks.remove).toHaveBeenCalledWith('1');
+      expect(mocks.remove.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.logout.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('does not call the backend when the user cancels', async () => {
+      const user = await openConfirmation();
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(mocks.remove).not.toHaveBeenCalled();
+      expect(mocks.logout).not.toHaveBeenCalled();
+    });
+
+    it('disables the button while the request is in flight', async () => {
+      let finish: () => void = () => {};
+      mocks.remove.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+      const user = await openConfirmation();
+
+      await user.click(screen.getByRole('button', { name: 'Yes, delete it' }));
+
+      expect(await screen.findByRole('button', { name: 'Deleting…' })).toBeDisabled();
+
+      finish();
+      await waitFor(() => expect(mocks.logout).toHaveBeenCalled());
+    });
+
+    it('still finishes the logout when the account no longer exists (404)', async () => {
+      mocks.remove.mockRejectedValue(new ApiError('gone', 404));
+      const user = await openConfirmation();
+
+      await user.click(screen.getByRole('button', { name: 'Yes, delete it' }));
+
+      await waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(1));
+    });
+
+    it.each([
+      [new ApiError('nope', 403), 'You can only delete your own account.'],
+      [new NetworkError(), 'Cannot reach the server. Check your connection.'],
+      [new TimeoutError(), 'The server took too long to respond. Try again.'],
+      [new ApiError('boom', 500), 'Something went wrong. Please try again.']
+    ])('shows a message and keeps the session on failure (%#)', async (failure, message) => {
+      mocks.remove.mockRejectedValue(failure);
+      const user = await openConfirmation();
+
+      await user.click(screen.getByRole('button', { name: 'Yes, delete it' }));
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(mocks.logout).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Delete account' })).toBeInTheDocument();
     });
   });
 });

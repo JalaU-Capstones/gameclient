@@ -2,6 +2,7 @@
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
   import { usersApi } from '$lib/api/user';
   import { sounds } from '$lib/audio/sounds';
+  import { performLogout } from '$lib/auth/logout';
   import { userFacingMessage } from '$lib/errors/messages';
   import { currentUser, session } from '$lib/stores/session';
   import type { UpdateUserPayload } from '$lib/types/api';
@@ -19,6 +20,7 @@
   let success = $state('');
   let submitting = $state(false);
   let confirmingDelete = $state(false);
+  let deleteError = $state('');
   let deleting = $state(false);
 
   const memberSince = $derived(
@@ -88,6 +90,7 @@
     sounds.play('click');
     error = '';
     success = '';
+    deleteError = '';
     confirmingDelete = true;
   }
 
@@ -98,12 +101,37 @@
 
   async function handleConfirmDelete() {
     sounds.play('click');
+    const user = $currentUser;
+    if (!user) return;
+
+    deleteError = '';
     deleting = true;
+    let deleted = false;
     try {
-      // TODO(backend): DELETE /api/v2/users/{id} -> 204 No Content
-      // Then session.clear() and goto('/login').
+      await usersApi.delete(user.id);
+      deleted = true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        // The account is already gone: finish the logout instead of blocking the user.
+        deleted = true;
+      } else if (err instanceof ApiError && err.status === 403) {
+        deleteError = 'You can only delete your own account.';
+      } else if (err instanceof NetworkError) {
+        deleteError = 'Cannot reach the server. Check your connection.';
+      } else if (err instanceof TimeoutError) {
+        deleteError = 'The server took too long to respond. Try again.';
+      } else {
+        deleteError = userFacingMessage(err instanceof ApiError ? err.code : undefined);
+      }
     } finally {
       deleting = false;
+    }
+
+    if (deleted) {
+      // Same cleanup as the Logout button: close sockets, clear the session, go to /login.
+      await performLogout();
+    } else {
+      confirmingDelete = false;
     }
   }
 </script>
@@ -186,6 +214,9 @@
   </form>
 
   <div class="space-y-6 border-t border-red-500/40 pt-10">
+    {#if deleteError}
+      <p class="text-red-500">{deleteError}</p>
+    {/if}
     {#if !confirmingDelete}
       <button
         type="button"
