@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   play: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
-  logout: vi.fn()
+  logout: vi.fn(),
+  renew: vi.fn()
 }));
 
 vi.mock('$lib/api/user', () => ({
@@ -19,6 +20,10 @@ vi.mock('$lib/api/user', () => ({
 
 vi.mock('$lib/auth/logout', () => ({
   performLogout: mocks.logout
+}));
+
+vi.mock('$lib/auth/bootstrap', () => ({
+  renewSessionToken: mocks.renew
 }));
 
 vi.mock('$lib/audio/sounds', () => ({
@@ -40,6 +45,8 @@ describe('Profile page', () => {
     mocks.remove.mockReset();
     mocks.logout.mockReset();
     mocks.logout.mockResolvedValue(undefined);
+    mocks.renew.mockReset();
+    mocks.renew.mockResolvedValue('new-token');
   });
 
   it('prefills name and email from the session and never shows a password', () => {
@@ -210,6 +217,72 @@ describe('Profile page', () => {
       let stored: { name: string } | null = null;
       session.subscribe((state) => (stored = state.user))();
       expect(stored).toMatchObject({ name: 'Ada' });
+    });
+    it('renews the session token after the name changes', async () => {
+      mocks.update.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(ProfilePage);
+
+      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.click(screen.getByRole('button', { name: 'Update account' }));
+
+      expect(await screen.findByText('Account updated.')).toBeInTheDocument();
+      await waitFor(() => expect(mocks.renew).toHaveBeenCalledTimes(1));
+    });
+
+    it('renews the session token after the email changes', async () => {
+      mocks.update.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(ProfilePage);
+
+      await user.clear(screen.getByPlaceholderText('Email'));
+      await user.type(screen.getByPlaceholderText('Email'), 'new@example.com');
+      await user.click(screen.getByRole('button', { name: 'Update account' }));
+
+      expect(await screen.findByText('Account updated.')).toBeInTheDocument();
+      await waitFor(() => expect(mocks.renew).toHaveBeenCalledTimes(1));
+    });
+
+    it('does not renew the token when only the password changes', async () => {
+      mocks.update.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(ProfilePage);
+
+      await user.type(screen.getByPlaceholderText('Leave empty to keep current'), 'newsecret1');
+      await user.click(screen.getByRole('button', { name: 'Update account' }));
+
+      expect(await screen.findByText('Account updated.')).toBeInTheDocument();
+      expect(mocks.renew).not.toHaveBeenCalled();
+    });
+
+    it('does not renew the token when the update fails', async () => {
+      mocks.update.mockRejectedValue(new ApiError('dup', 409));
+      const user = userEvent.setup();
+      render(ProfilePage);
+
+      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.click(screen.getByRole('button', { name: 'Update account' }));
+
+      expect(
+        await screen.findByText('An account with this email already exists.')
+      ).toBeInTheDocument();
+      expect(mocks.renew).not.toHaveBeenCalled();
+    });
+
+    it('still shows "Account updated." when the token renewal fails', async () => {
+      mocks.update.mockResolvedValue(undefined);
+      mocks.renew.mockRejectedValue(new ApiError('Unauthorized', 401));
+      const user = userEvent.setup();
+      render(ProfilePage);
+
+      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.click(screen.getByRole('button', { name: 'Update account' }));
+
+      expect(await screen.findByText('Account updated.')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Updating…' })).not.toBeInTheDocument()
+      );
+      expect(screen.queryByText(/went wrong|reach the server/)).not.toBeInTheDocument();
     });
   });
   describe('deleting the account', () => {

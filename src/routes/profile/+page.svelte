@@ -2,6 +2,7 @@
   import { ApiError, NetworkError, TimeoutError } from '$lib/api/errors';
   import { usersApi } from '$lib/api/user';
   import { sounds } from '$lib/audio/sounds';
+  import { renewSessionToken } from '$lib/auth/bootstrap';
   import { performLogout } from '$lib/auth/logout';
   import { userFacingMessage } from '$lib/errors/messages';
   import { currentUser, session } from '$lib/stores/session';
@@ -38,6 +39,14 @@
       inputPassword.length > 0
   );
 
+  async function renewTokenAfterEdit() {
+    try {
+      await renewSessionToken();
+    } catch (err) {
+      if (import.meta.env.DEV) console.debug('[profile] token renewal failed', err);
+    }
+  }
+
   async function handleUpdate(event: SubmitEvent) {
     event.preventDefault();
     sounds.play('click');
@@ -64,6 +73,9 @@
       inputEmail = email;
       inputPassword = '';
       success = 'Account updated.';
+      if (payload.name !== undefined || payload.email !== undefined) {
+        await renewTokenAfterEdit();
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         error = 'An account with this email already exists.';
