@@ -303,6 +303,7 @@ describe('Lobby page', () => {
     expect(await screen.findByRole('button', { name: 'Invite' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'History' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Logs' })).toBeDisabled();
 
     emit(mocks.gameplayHandlers, 'invitation_received', {
       game_id: '123e4567-e89b-42d3-a456-426614174002',
@@ -371,5 +372,14 @@ describe('Lobby page', () => {
 
     expect(mocks.play).toHaveBeenCalledWith('click');
     expect(mocks.goto).toHaveBeenCalledWith('/profile');
+  });
+
+  it('plays a click sound and navigates to the logs page', async () => {
+    render(LobbyPage);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Logs' }));
+
+    expect(mocks.play).toHaveBeenCalledWith('click');
+    expect(mocks.goto).toHaveBeenCalledWith('/logs');
   });
 });

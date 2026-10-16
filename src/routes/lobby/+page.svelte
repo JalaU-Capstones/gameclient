@@ -43,6 +43,12 @@
     goto(resolve('/profile'));
   }
 
+  function handleOpenLogs() {
+    if ($standbyMode) return;
+    sounds.play('click');
+    goto(resolve('/logs'));
+  }
+
   onMount(() => {
     mounted = true;
     gameplaysClient = globalGameplaysClient.getOrCreate();
@@ -105,6 +111,14 @@
       onclick={handleOpenProfile}
     >
       Profile
+    </button>
+    <button
+      type="button"
+      disabled={$standbyMode}
+      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
+      onclick={handleOpenLogs}
+    >
+      Logs
     </button>
   </div>
 
