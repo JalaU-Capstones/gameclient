@@ -102,6 +102,10 @@
   const tabId = createTabId();
   let isPublicRoute = $derived(PUBLIC_ROUTES.includes($page.url.pathname));
   let canGoBack = $derived($navigationHistory.length >= 2 && navigationHistory.canGoBack());
+  // No previous page (direct URL, reload): offer a way out to the lobby instead of nothing.
+  let showGoToLobby = $derived(
+    !canGoBack && !isPublicRoute && $page.url.pathname !== '/lobby' && $page.url.pathname !== '/'
+  );
 
   function safeDiagnosticMessage(message: string | undefined): string | undefined {
     if (!message) return message;
@@ -627,7 +631,7 @@
   async function handleBack() {
     if (isLeavingGame) return;
     sounds.play('click');
-    const target = navigationHistory.back();
+    const target = canGoBack ? navigationHistory.back() : '/lobby';
     if (!target) return;
 
     if (/^\/game\//.test($page.url.pathname)) {
@@ -1001,6 +1005,16 @@
           data-testid="back-button"
         >
           {isLeavingGame ? 'Leaving...' : '← Back'}
+        </button>
+      {:else if $isAuthenticated && showGoToLobby}
+        <button
+          type="button"
+          onclick={handleBack}
+          disabled={isLeavingGame || isStandby || sessionConflict}
+          class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
+          data-testid="lobby-button"
+        >
+          {isLeavingGame ? 'Leaving...' : 'Go to lobby'}
         </button>
       {/if}
       {#if $isAuthenticated}

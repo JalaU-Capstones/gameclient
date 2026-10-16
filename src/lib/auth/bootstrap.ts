@@ -128,6 +128,18 @@ export function bootstrapSession(options: BootstrapOptions = {}): Promise<Bootst
   return inFlight;
 }
 
+export async function renewSessionToken(): Promise<string> {
+  const generation = sessionGeneration;
+  const release = await acquireSessionLock();
+  try {
+    const accessToken = await refreshAccessToken(generation);
+    setLastPresenceToken(accessToken);
+    return accessToken;
+  } finally {
+    release();
+  }
+}
+
 export function handleAuthFailure(
   error: unknown,
   onTransient?: (message: string) => void,

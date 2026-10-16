@@ -20,9 +20,13 @@ vi.mock('$lib/stores/ws', () => ({
   setLastPresenceToken: vi.fn()
 }));
 
-import { bootstrapSession, clearBootstrapSessionCache } from './bootstrap';
+import { bootstrapSession, clearBootstrapSessionCache, renewSessionToken } from './bootstrap';
 import { session } from '$lib/stores/session';
-import { broadcastSessionRefreshed, openSessionChannel } from './sessionLock';
+import {
+  broadcastSessionRefreshed,
+  getLastSessionRefreshAt,
+  openSessionChannel
+} from './sessionLock';
 import { ApiError, NetworkError } from '$lib/api/errors';
 
 const user = {
@@ -230,5 +234,43 @@ describe('bootstrapSession', () => {
 
     await expect(result).resolves.toEqual({ accessToken: 'access-token', user });
     expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+});
+describe('renewSessionToken', () => {
+  beforeEach(() => {
+    clearBootstrapSessionCache();
+    mocks.refresh.mockReset().mockResolvedValue({ access_token: 'new-token' });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('asks for a new access token through the refresh endpoint', async () => {
+    await expect(renewSessionToken()).resolves.toBe('new-token');
+
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the other tabs that the session was refreshed', async () => {
+    const at = Date.now() + 60 * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(at);
+
+    await renewSessionToken();
+
+    expect(getLastSessionRefreshAt()).toBe(at);
+  });
+
+  it('rejects with a 401 when the session is no longer valid', async () => {
+    mocks.refresh.mockRejectedValue(new ApiError('Unauthorized', 401));
+
+    await expect(renewSessionToken()).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('releases the session lock after a failure so the next renewal can run', async () => {
+    mocks.refresh.mockRejectedValueOnce(new NetworkError());
+
+    await expect(renewSessionToken()).rejects.toBeInstanceOf(NetworkError);
+    await expect(renewSessionToken()).resolves.toBe('new-token');
   });
 });

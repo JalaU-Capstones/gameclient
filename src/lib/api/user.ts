@@ -1,5 +1,5 @@
 import { httpClient } from './client';
-import type { PublicUser } from '$lib/types/api';
+import type { PublicUser, UpdateUserPayload } from '$lib/types/api';
 
 export const usersApi = {
   getById: (id: string): Promise<PublicUser> =>
@@ -13,5 +13,11 @@ export const usersApi = {
       if (result.status === 'fulfilled') names[uniqueIds[index]] = result.value.name;
     });
     return names;
-  }
+  },
+
+  update: (id: string, payload: UpdateUserPayload): Promise<void> =>
+    httpClient.put<void>(`/api/v2/users/${encodeURIComponent(id)}`, payload),
+
+  delete: (id: string): Promise<void> =>
+    httpClient.delete<void>(`/api/v2/users/${encodeURIComponent(id)}`)
 };

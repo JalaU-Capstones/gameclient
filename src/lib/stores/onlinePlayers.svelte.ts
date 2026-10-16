@@ -57,11 +57,12 @@ class OnlinePlayersStore {
       'user_status',
       (payload) => this.#handleUserStatus(payload)
     );
-
+    const offUpdated = client.on('user_updated', () => this.refresh());
     this.#unsubscribeEvents = () => {
       offAuth();
       offOnline();
       offStatus();
+      offUpdated();
     };
 
     if (client.isAlive()) this.refresh();
