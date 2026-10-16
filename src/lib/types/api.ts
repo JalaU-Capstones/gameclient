@@ -44,7 +44,7 @@ export interface Gameplay {
 
 export type GameplayResponse = Gameplay;
 
-export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error' | 'critical';
 
 export interface LogEntry {
   id: string;
@@ -55,6 +55,13 @@ export interface LogEntry {
   gameplayId: string | null;
   metadata: Record<string, unknown> | null;
   timestamp: string;
+}
+
+export interface LogsQueryResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  items: LogEntry[];
 }
 
 export interface HealthResponse {
