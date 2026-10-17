@@ -292,9 +292,11 @@ describe('globalGameplaysClient', () => {
     expect(mocks.claimGameplayOwnership).toHaveBeenCalledTimes(2);
   });
 
-  it('dispatches closed events with the close code and reason and disables reconnect on 4409', () => {
+  it('dispatches session_replaced events and disables reconnect on 4409', () => {
     const originalWebSocket = globalThis.WebSocket;
     const closeListener = vi.fn();
+    const sessionReplacedListener = vi.fn();
+    const authFailedListener = vi.fn();
     const closeSpy = vi.fn();
 
     class MockWebSocket {
@@ -318,26 +320,88 @@ describe('globalGameplaysClient', () => {
       value: MockWebSocket
     });
 
-    const client = createWebSocketClient({ path: '/api/v2/ws/presence' });
-    client.on('closed', closeListener);
-    client.connect('token');
+    try {
+      const client = createWebSocketClient({ path: '/api/v2/ws/presence' });
+      client.on('closed', closeListener);
+      client.on('session_replaced', sessionReplacedListener);
+      client.on('auth_failed', authFailedListener);
+      client.connect('token');
 
-    const wsInstance = MockWebSocket.instances[0];
-    expect(wsInstance).toBeDefined();
-    wsInstance.onclose?.({ code: 4409, reason: 'session_replaced' } as CloseEvent);
+      const wsInstance = MockWebSocket.instances[0];
+      expect(wsInstance).toBeDefined();
+      wsInstance.onclose?.({ code: 4409, reason: 'session_replaced' } as CloseEvent);
 
-    expect(closeListener).toHaveBeenCalledWith({
-      code: 4409,
-      reason: 'session_replaced',
-      path: '/api/v2/ws/presence'
-    });
-    expect(client.state).toBeDefined();
-    expect(closeListener).toHaveBeenCalledTimes(1);
+      expect(sessionReplacedListener).toHaveBeenCalledWith({
+        code: 4409,
+        reason: 'session_replaced',
+        path: '/api/v2/ws/presence'
+      });
+      expect(closeListener).not.toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'session_replaced' })
+      );
+      expect(authFailedListener).not.toHaveBeenCalled();
+      expect(client.state).toBeDefined();
+      expect(MockWebSocket.instances).toHaveLength(1);
+    } finally {
+      Object.defineProperty(globalThis, 'WebSocket', {
+        configurable: true,
+        writable: true,
+        value: originalWebSocket
+      });
+    }
+  });
+
+  it('still emits closed for session_already_active close reasons', () => {
+    const originalWebSocket = globalThis.WebSocket;
+    const closeListener = vi.fn();
+    const sessionReplacedListener = vi.fn();
+    const closeSpy = vi.fn();
+
+    class MockWebSocket {
+      static instances: MockWebSocket[] = [];
+      readyState = WebSocket.OPEN;
+      close = closeSpy;
+      send = vi.fn();
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
 
     Object.defineProperty(globalThis, 'WebSocket', {
       configurable: true,
       writable: true,
-      value: originalWebSocket
+      value: MockWebSocket
     });
+
+    try {
+      const client = createWebSocketClient({ path: '/api/v2/ws/presence' });
+      client.on('closed', closeListener);
+      client.on('session_replaced', sessionReplacedListener);
+      client.connect('token');
+
+      const wsInstance = MockWebSocket.instances[0];
+      expect(wsInstance).toBeDefined();
+      wsInstance.onclose?.({ code: 4409, reason: 'session_already_active' } as CloseEvent);
+
+      expect(closeListener).toHaveBeenCalledWith({
+        code: 4409,
+        reason: 'session_already_active',
+        path: '/api/v2/ws/presence'
+      });
+      expect(sessionReplacedListener).not.toHaveBeenCalled();
+      expect(client.state).toBeDefined();
+      expect(MockWebSocket.instances).toHaveLength(1);
+    } finally {
+      Object.defineProperty(globalThis, 'WebSocket', {
+        configurable: true,
+        writable: true,
+        value: originalWebSocket
+      });
+    }
   });
 });
