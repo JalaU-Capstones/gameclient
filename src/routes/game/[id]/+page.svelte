@@ -47,6 +47,7 @@
   let authRetryUsed = false;
   let moveDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let lastMoveRequestId: string | null = null;
+  let lastRetryUpdatedAt: number | null = null;
 
   const MOVE_DEADLINE_MS = 8_000;
 
@@ -321,15 +322,26 @@
           })
         );
         unsubscribers.push(
-          client.on('invitation_expired', (payload: { game_id?: string } | undefined) => {
-            if (payload?.game_id && payload.game_id !== currentGameId) return;
-            if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
-              return;
-            invitationState = 'expired';
-            waitingForRematch = false;
-            clearMoveInFlight();
-            pushToast('warning', userFacingMessage('INVITATION_EXPIRED'));
-          })
+          client.on(
+            'invitation_expired',
+            (payload: { game_id?: string; updated_at?: string } | undefined) => {
+              if (payload?.game_id && payload.game_id !== currentGameId) return;
+              const expiredAt = payload?.updated_at ? Date.parse(payload.updated_at) : Number.NaN;
+              if (
+                lastRetryUpdatedAt !== null &&
+                Number.isFinite(expiredAt) &&
+                expiredAt <= lastRetryUpdatedAt
+              ) {
+                return;
+              }
+              if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
+                return;
+              invitationState = 'expired';
+              waitingForRematch = false;
+              clearMoveInFlight();
+              pushToast('warning', userFacingMessage('INVITATION_EXPIRED'));
+            }
+          )
         );
         unsubscribers.push(
           client.on('invitation_canceled', (payload: { game_id?: string } | undefined) => {
@@ -367,6 +379,7 @@
                     attempt?: number;
                     remaining_attempts?: number;
                     idempotent?: boolean;
+                    updated_at?: string | null;
                   }
                 | undefined
             ) => {
@@ -376,12 +389,16 @@
               retryAttempt = payload.attempt ?? 0;
               retryRemainingAttempts = payload.remaining_attempts ?? undefined;
               retryAfterSeconds = undefined;
+              const retryUpdatedAt = payload.updated_at
+                ? Date.parse(payload.updated_at)
+                : Number.NaN;
+              lastRetryUpdatedAt = Number.isFinite(retryUpdatedAt) ? retryUpdatedAt : null;
               invitationState = 'pending';
               pushToast(
                 'info',
                 payload.idempotent === true
-                  ? 'Esta invitación ya estaba pendiente. La UI se sincronizó.'
-                  : 'Reintento enviado. Esperando respuesta del invitado…'
+                  ? 'This invitation was already pending. Your view is synced.'
+                  : 'Retry sent. Waiting for the guest to respond...'
               );
             }
           )
@@ -453,6 +470,7 @@
     const id = $page.params.id;
     if (id && id !== currentGameId) {
       currentGameId = id;
+      lastRetryUpdatedAt = null;
       loadGame(id);
     }
   });
@@ -471,12 +489,18 @@
     });
   });
 
+  function leaveCurrentGameOnDestroy() {
+    if (!currentGameId || !gameplaysClient) return;
+    gameplaysClient.send('leave_game', { game_id: currentGameId });
+  }
+
   onDestroy(() => {
     if (import.meta.env.DEV) console.debug('[game] destroy; retaining gameplay socket');
     gameplayClientSubscription?.();
     gameplayClientSubscription = null;
     if (authRetryTimer) clearTimeout(authRetryTimer);
     clearMoveInFlight();
+    leaveCurrentGameOnDestroy();
     unsubscribers.forEach((unsub) => unsub());
   });
 
