@@ -142,6 +142,130 @@ describe('createWebSocketClient', () => {
     await expect(server).toReceiveMessage({ event: 'game_message', payload: { text: 'hello' } });
   });
 
+  it('does not reconnect after a 1000 reconnected close and dispatches exactly once', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    vi.useFakeTimers();
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instances: MockWebSocket[] = [];
+
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn((code?: number, reason?: string) => {
+        this.readyState = MockWebSocket.CLOSED;
+        this.onclose?.({ code: code ?? 1000, reason: reason ?? 'closed' } as CloseEvent);
+      });
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createWebSocketClient({
+        path: '/api/v2/ws/gameplays',
+        baseReconnectDelayMs: 1
+      });
+      const closed = vi.fn();
+      client.on('closed', closed);
+      client.connect('reconnected-token');
+
+      const socket = MockWebSocket.instances[0];
+      expect(socket).toBeDefined();
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u-reconnected' } })
+      } as MessageEvent);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(get(client.state)).toBe('connected');
+
+      socket.close(1000, 'reconnected');
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(closed).toHaveBeenCalledTimes(1);
+      expect(closed).toHaveBeenCalledWith({
+        code: 1000,
+        reason: 'reconnected',
+        path: '/api/v2/ws/gameplays'
+      });
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(get(client.state)).toBe('disconnected');
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('keeps the socket alive through a 3x keepalive threshold and closes after exceeding it', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    vi.useFakeTimers();
+    class MockWebSocket {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static instances: MockWebSocket[] = [];
+
+      readyState = MockWebSocket.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+      close = vi.fn((code?: number, reason?: string) => {
+        this.readyState = MockWebSocket.CLOSED;
+        this.onclose?.({ code: code ?? 1000, reason: reason ?? 'closed' } as CloseEvent);
+      });
+
+      constructor() {
+        MockWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    try {
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      const client = createWebSocketClient({
+        path: '/api/v2/ws/gameplays',
+        pingIntervalMs: 1000,
+        authTimeoutMs: 50,
+        baseReconnectDelayMs: 10
+      });
+      client.connect('token-keepalive');
+      const socket = MockWebSocket.instances[0];
+      expect(socket).toBeDefined();
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u-keepalive' } })
+      } as MessageEvent);
+      expect(get(client.state)).toBe('connected');
+
+      const heartbeat = setIntervalSpy.mock.calls.at(-1)?.[0];
+      expect(typeof heartbeat).toBe('function');
+      if (typeof heartbeat !== 'function') throw new Error('Missing keepalive interval');
+
+      const baseline = Date.now();
+      vi.setSystemTime(baseline + 1000 * 2 + 1);
+      heartbeat();
+      expect(socket.close).not.toHaveBeenCalled();
+      expect(client.isAlive()).toBe(true);
+
+      vi.setSystemTime(baseline + 1000 * 3 + 1);
+      heartbeat();
+      expect(socket.close).toHaveBeenCalledWith(1000, 'keepalive_timeout');
+      expect(get(client.state)).toBe('reconnecting');
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
   it('sends a presence heartbeat every 25 seconds', async () => {
     const server = new WS('ws://localhost:3000/api/v2/ws/presence', { jsonProtocol: true });
     const client = createPresenceClient();

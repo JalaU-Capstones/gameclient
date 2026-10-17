@@ -143,7 +143,7 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         return;
       }
 
-      if (Date.now() - lastSeenMessageAt > pingIntervalMs * 2) {
+      if (Date.now() - lastSeenMessageAt > pingIntervalMs * 3) {
         socket.close(1000, 'keepalive_timeout');
         return;
       }
@@ -304,6 +304,18 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
           reason: closeEvent.reason,
           path
         });
+        setState('disconnected');
+        socket = null;
+        return;
+      }
+
+      if (closeEvent.code === 1000 && closeEvent.reason === 'reconnected') {
+        dispatchToHandlers('closed', {
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          path
+        });
+        shouldReconnect = false;
         setState('disconnected');
         socket = null;
         return;
