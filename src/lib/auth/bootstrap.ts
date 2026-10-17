@@ -5,6 +5,7 @@ import { authApi } from '$lib/api/auth';
 import { httpClient } from '$lib/api/client';
 import { globalGameplaysClient, globalPresenceClient, setLastPresenceToken } from '$lib/stores/ws';
 import { session } from '$lib/stores/session';
+import { pushToast } from '$lib/stores/toasts';
 import type { User } from '$lib/types/api';
 import {
   acquireSessionLock,
@@ -21,6 +22,7 @@ interface BootstrapResult {
 let inFlight: Promise<BootstrapResult> | null = null;
 let localAccessToken = '';
 let sessionGeneration = 0;
+let handlingSessionReplaced = false;
 
 function ensureSessionGeneration(generation: number): void {
   if (generation !== sessionGeneration) {
@@ -140,6 +142,26 @@ export async function renewSessionToken(): Promise<string> {
   }
 }
 
+export function handleSessionReplaced(redirectPath = '/lobby'): void {
+  if (handlingSessionReplaced) return;
+  handlingSessionReplaced = true;
+  try {
+    if (import.meta.env.DEV) {
+      console.debug('[auth] session replaced by another tab or browser');
+    }
+    globalPresenceClient.disconnect();
+    globalGameplaysClient.disconnect();
+    clearBootstrapSessionCache();
+    session.clear();
+    pushToast('warning', 'Tu sesión se abrió en otro lugar.');
+    void goto(resolve(`/login?redirect=${encodeURIComponent(redirectPath)}`));
+  } finally {
+    setTimeout(() => {
+      handlingSessionReplaced = false;
+    }, 0);
+  }
+}
+
 export function handleAuthFailure(
   error: unknown,
   onTransient?: (message: string) => void,
@@ -155,6 +177,10 @@ export function handleAuthFailure(
   }
 
   if (error instanceof ApiError && error.isUnauthorized) {
+    if (error.code === 'SESSION_REPLACED') {
+      handleSessionReplaced(redirectPath);
+      return;
+    }
     broadcastLogout();
     globalPresenceClient.disconnect();
     globalGameplaysClient.disconnect();

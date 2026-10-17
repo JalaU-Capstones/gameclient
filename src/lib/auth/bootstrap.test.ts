@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   refresh: vi.fn(),
-  broadcastLogout: vi.fn()
+  broadcastLogout: vi.fn(),
+  pushToast: vi.fn()
 }));
 
 vi.mock('$lib/api/client', () => ({ httpClient: { get: mocks.get } }));
@@ -19,8 +20,16 @@ vi.mock('$lib/stores/ws', () => ({
   globalGameplaysClient: { disconnect: vi.fn() },
   setLastPresenceToken: vi.fn()
 }));
+vi.mock('$lib/stores/toasts', () => ({
+  pushToast: mocks.pushToast
+}));
 
-import { bootstrapSession, clearBootstrapSessionCache, renewSessionToken } from './bootstrap';
+import {
+  bootstrapSession,
+  clearBootstrapSessionCache,
+  handleAuthFailure,
+  renewSessionToken
+} from './bootstrap';
 import { session } from '$lib/stores/session';
 import {
   broadcastSessionRefreshed,
@@ -50,6 +59,7 @@ describe('bootstrapSession', () => {
     mocks.get.mockReset().mockResolvedValue(user);
     mocks.refresh.mockReset().mockResolvedValue({ access_token: 'access-token' });
     mocks.broadcastLogout.mockReset();
+    mocks.pushToast.mockReset();
   });
 
   afterEach(() => {
@@ -163,6 +173,17 @@ describe('bootstrapSession', () => {
       status: 401
     });
     expect(mocks.broadcastLogout).not.toHaveBeenCalled();
+  });
+
+  it('routes SESSION_REPLACED through the dedicated session-replaced handler without logging out', () => {
+    const error = new ApiError('Session replaced', 401, 'SESSION_REPLACED');
+    session.setUser(user);
+
+    handleAuthFailure(error, undefined, '/lobby');
+
+    expect(mocks.broadcastLogout).not.toHaveBeenCalled();
+    expect(mocks.pushToast).toHaveBeenCalledWith('warning', 'Tu sesión se abrió en otro lugar.');
+    expect(session).toBeDefined();
   });
 
   it('aborts an in-flight refresh after the session cache is cleared', async () => {
