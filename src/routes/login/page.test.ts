@@ -11,9 +11,12 @@ const mocks = vi.hoisted(() => ({
   login: vi.fn(),
   me: vi.fn(),
   logout: vi.fn(),
+  takeoverSession: vi.fn(),
   goto: vi.fn(),
   resolve: (path: string) => path,
-  page: { url: { searchParams: new URLSearchParams() } }
+  page: { url: { searchParams: new URLSearchParams() } },
+  setLastPresenceToken: vi.fn(),
+  pushToast: vi.fn()
 }));
 
 vi.mock('$app/stores', () => ({
