@@ -90,6 +90,7 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   user: User;
+  other_active_sessions: number;
 }
 
 export interface AuthResponse {
