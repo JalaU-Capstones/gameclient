@@ -228,7 +228,7 @@ describe('Game page', () => {
 
       expect(mocks.pushToast).toHaveBeenCalledWith(
         'warning',
-        'Otra persona aceptó la invitación antes que tú.'
+        'Another player accepted the invitation first.'
       );
       expect(mocks.goto).not.toHaveBeenCalled();
 
@@ -266,7 +266,7 @@ describe('Game page', () => {
     });
 
     expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
-    expect(screen.getByText('2 reintentos restantes')).toBeInTheDocument();
+    expect(screen.getByText('2 retries left')).toBeInTheDocument();
     expect(mocks.pushToast).toHaveBeenCalledWith(
       'info',
       'Retry sent. Waiting for the guest to respond...'
@@ -303,6 +303,77 @@ describe('Game page', () => {
     expect(mocks.pushToast).toHaveBeenCalledWith('warning', expect.any(String));
   });
 
+  it('ignores a stale invitation_expired that arrives after invitation_retry_accepted', async () => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: false,
+      updated_at: '2026-10-17T12:00:00.000000+00:00'
+    });
+    expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
+    mocks.pushToast.mockClear();
+
+    emit('invitation_expired', {
+      game_id: 'game-123',
+      reason: 'timeout',
+      updated_at: '2026-10-17T11:59:59.000000+00:00'
+    });
+
+    expect(mocks.pushToast).not.toHaveBeenCalled();
+    expect(screen.getByText('Invitation pending')).toBeInTheDocument();
+  });
+
+  it('processes invitation_expired when updated_at is missing from the payload', async () => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: false,
+      updated_at: '2026-10-17T12:00:00.000000+00:00'
+    });
+    await screen.findByText('Invitation pending');
+    mocks.pushToast.mockClear();
+
+    emit('invitation_expired', { game_id: 'game-123', reason: 'timeout' });
+
+    expect(mocks.pushToast).toHaveBeenCalledWith('warning', expect.any(String));
+  });
+
+  it('filters an invitation_expired event with the same updated_at as the last retry', async () => {
+    mocks.invitationState = 'pending';
+    render(GamePage);
+    await screen.findByText('Ada');
+    const updatedAt = '2026-10-17T12:00:00.000000+00:00';
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: false,
+      updated_at: updatedAt
+    });
+    await screen.findByText('Invitation pending');
+    mocks.pushToast.mockClear();
+
+    emit('invitation_expired', {
+      game_id: 'game-123',
+      reason: 'timeout',
+      updated_at: updatedAt
+    });
+
+    expect(mocks.pushToast).not.toHaveBeenCalled();
+    expect(screen.getByText('Invitation pending')).toBeInTheDocument();
+  });
+
   it('shows the idempotent retry toast when the invitation was already pending', async () => {
     render(GamePage);
     await screen.findByText('Ada');
@@ -333,7 +404,7 @@ describe('Game page', () => {
     });
 
     expect(await screen.findByTestId('countdown-button')).toBeInTheDocument();
-    expect(screen.getByTestId('countdown-button')).toHaveTextContent('Reintentar en (30s)');
+    expect(screen.getByTestId('countdown-button')).toHaveTextContent('Retry in (30s)');
   });
 
   it('sends retry_invitation when the host clicks the retry button', async () => {
@@ -341,7 +412,7 @@ describe('Game page', () => {
     render(GamePage);
     await screen.findByText('Ada');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(mocks.client.send).toHaveBeenCalledWith('retry_invitation', { game_id: 'game-123' });
   });
@@ -352,7 +423,7 @@ describe('Game page', () => {
     render(GamePage);
     await screen.findByText('Ada');
 
-    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('disables the retry button in standby mode', async () => {
@@ -361,7 +432,7 @@ describe('Game page', () => {
     render(GamePage);
     await screen.findByText('Ada');
 
-    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled();
   });
 
   it('subscribes once when the gameplay socket is already connected', async () => {

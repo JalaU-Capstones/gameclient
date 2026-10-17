@@ -107,6 +107,14 @@ describe('InvitationHost', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('ignores invitation payloads missing required fields', async () => {
+    render(InvitationHost);
+
+    emit('invitation_received', { host: { id: 'guest-1', name: 'Bob' } });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('opens the modal for a promoted invitation and shows the wait message', async () => {
     render(InvitationHost);
 
@@ -116,7 +124,7 @@ describe('InvitationHost', () => {
     });
 
     expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
-    expect(screen.getByText('Esta invitación estaba en espera.')).toBeInTheDocument();
+    expect(screen.getByText('This invitation was waiting in the queue.')).toBeInTheDocument();
   });
 
   it('opens the modal for a fresh invitation without the wait message', async () => {
@@ -128,7 +136,7 @@ describe('InvitationHost', () => {
     });
 
     expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
-    expect(screen.queryByText('Esta invitación estaba en espera.')).not.toBeInTheDocument();
+    expect(screen.queryByText('This invitation was waiting in the queue.')).not.toBeInTheDocument();
   });
 
   it.each(['invitation_received', 'invitation_promoted'])(
@@ -233,7 +241,7 @@ describe('InvitationHost', () => {
     }
   );
 
-  it('closes the modal after 60 seconds without sending reject_invitation', async () => {
+  it('closes the modal after 70 seconds without sending reject_invitation', async () => {
     vi.useFakeTimers();
     try {
       render(InvitationHost);
@@ -241,7 +249,7 @@ describe('InvitationHost', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(screen.getByText('Challenger Approaching!')).toBeInTheDocument();
 
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(70_000);
 
       await waitFor(() =>
         expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument()
@@ -251,6 +259,91 @@ describe('InvitationHost', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows an expiry toast when the modal timeout fires while submitting', async () => {
+    vi.useFakeTimers();
+    try {
+      render(InvitationHost);
+      emit('invitation_received', validInvite());
+      await vi.advanceTimersByTimeAsync(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+      await vi.advanceTimersByTimeAsync(70_000);
+      await Promise.resolve();
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(mocks.pushToast).toHaveBeenCalledOnce();
+      expect(mocks.send).not.toHaveBeenCalledWith('reject_invitation', {
+        game_id: VALID_GAME_ID
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('wraps focus within the modal for forward and reverse Tab navigation', async () => {
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+    await screen.findByRole('dialog');
+    const buttons = screen.getAllByRole('button');
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+
+    last.focus();
+    const forwardTab = await fireEvent.keyDown(document, { key: 'Tab' });
+    expect(forwardTab).toBe(false);
+    expect(document.activeElement).toBe(first);
+
+    first.focus();
+    const reverseTab = await fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(reverseTab).toBe(false);
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('prevents Tab navigation when the modal has no focusable elements', async () => {
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+    const dialog = await screen.findByRole('dialog');
+    dialog.querySelectorAll('button').forEach((button) => button.remove());
+
+    const tabEvent = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    document.dispatchEvent(tabEvent);
+
+    expect(tabEvent.defaultPrevented).toBe(true);
+  });
+
+  it('navigates to the game when the invitation is accepted', async () => {
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+    await screen.findByRole('dialog');
+
+    emit('invitation_accepted', { game_id: VALID_GAME_ID });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.goto).toHaveBeenCalledWith(`/game/${VALID_GAME_ID}`);
+  });
+
+  it('closes the modal when an invalid accepted game id is received', async () => {
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+    await screen.findByRole('dialog');
+
+    emit('invitation_accepted', { game_id: 'invalid-id' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.goto).not.toHaveBeenCalled();
+  });
+
+  it('closes the modal and shows a warning when the invitation is rejected', async () => {
+    render(InvitationHost);
+    emit('invitation_received', validInvite());
+    await screen.findByRole('dialog');
+
+    emit('invitation_rejected');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocks.pushToast).toHaveBeenCalledOnce();
   });
 
   it('rebinds handlers after the gameplay client is replaced', async () => {
