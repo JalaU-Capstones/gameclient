@@ -47,7 +47,7 @@
   let authRetryUsed = false;
   let moveDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let lastMoveRequestId: string | null = null;
-  let lastRetryUpdatedAt: number | null = null;
+  let lastRetryUpdatedAt: string | null = null;
 
   const MOVE_DEADLINE_MS = 8_000;
 
@@ -173,6 +173,7 @@
     retryAttempt = 0;
     retryRemainingAttempts = undefined;
     retryAfterSeconds = undefined;
+    lastRetryUpdatedAt = null;
     isLoading = true;
     waitingForRematch = false;
 
@@ -324,13 +325,12 @@
         unsubscribers.push(
           client.on(
             'invitation_expired',
-            (payload: { game_id?: string; updated_at?: string } | undefined) => {
+            (payload: { game_id?: string; reason?: string; updated_at?: string } | undefined) => {
               if (payload?.game_id && payload.game_id !== currentGameId) return;
-              const expiredAt = payload?.updated_at ? Date.parse(payload.updated_at) : Number.NaN;
               if (
-                lastRetryUpdatedAt !== null &&
-                Number.isFinite(expiredAt) &&
-                expiredAt <= lastRetryUpdatedAt
+                lastRetryUpdatedAt &&
+                payload?.updated_at &&
+                payload.updated_at <= lastRetryUpdatedAt
               ) {
                 return;
               }
@@ -359,7 +359,7 @@
             'invitation_replaced',
             (payload: { game_id?: string; reason?: string } | undefined) => {
               if (payload?.game_id && payload.game_id !== currentGameId) return;
-              pushToast('warning', 'Otra persona aceptó la invitación antes que tú.');
+              pushToast('warning', 'Another player accepted the invitation first.');
               clearMoveInFlight();
               retryInFlight = false;
               setTimeout(() => {
@@ -379,7 +379,7 @@
                     attempt?: number;
                     remaining_attempts?: number;
                     idempotent?: boolean;
-                    updated_at?: string | null;
+                    updated_at?: string;
                   }
                 | undefined
             ) => {
@@ -389,10 +389,7 @@
               retryAttempt = payload.attempt ?? 0;
               retryRemainingAttempts = payload.remaining_attempts ?? undefined;
               retryAfterSeconds = undefined;
-              const retryUpdatedAt = payload.updated_at
-                ? Date.parse(payload.updated_at)
-                : Number.NaN;
-              lastRetryUpdatedAt = Number.isFinite(retryUpdatedAt) ? retryUpdatedAt : null;
+              if (payload.updated_at) lastRetryUpdatedAt = payload.updated_at;
               invitationState = 'pending';
               pushToast(
                 'info',
@@ -417,14 +414,14 @@
                 retryInFlight = false;
                 const seconds = payload.retry_after_seconds ?? 60;
                 retryAfterSeconds = seconds;
-                error = `Límite de reintentos alcanzado. Espera ${seconds} segundos.`;
+                error = `Retry limit reached. Wait ${seconds} seconds.`;
                 setTimeout(() => (error = ''), 3000);
                 return;
               }
               if (payload?.code === 'CREATE_GAME_RATE_LIMITED') {
                 retryInFlight = false;
                 const seconds = payload.retry_after_seconds ?? 60;
-                error = `Demasiadas invitaciones. Espera ${seconds} segundos.`;
+                error = `Too many invitations. Wait ${seconds} seconds.`;
                 setTimeout(() => (error = ''), 3000);
                 return;
               }
@@ -470,7 +467,6 @@
     const id = $page.params.id;
     if (id && id !== currentGameId) {
       currentGameId = id;
-      lastRetryUpdatedAt = null;
       loadGame(id);
     }
   });
@@ -743,9 +739,9 @@
             class="rounded-2xl border border-[var(--neon-magenta)] bg-[var(--cell)] p-4 shadow-[var(--glow-magenta)]"
           >
             <p class="text-sm text-[var(--text-secondary)] mb-3">
-              La invitación terminó en <span class="font-bold uppercase">{invitationState}</span>.
+              The invitation ended as <span class="font-bold uppercase">{invitationState}</span>.
               {#if isHost}
-                Puedes reintentar con el mismo invitado.
+                You can retry with the same guest.
               {/if}
             </p>
             {#if retryAfterSeconds !== undefined && retryAfterSeconds > 0}
@@ -754,7 +750,7 @@
                   seconds={retryAfterSeconds}
                   disabled={$standbyMode || retryInFlight}
                   onclick={handleRetry}
-                  label="Reintentar en"
+                  label="Retry in"
                   class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               {/key}
@@ -765,14 +761,14 @@
                 onclick={handleRetry}
                 class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl hover:bg-[var(--neon-cyan)] hover:text-black font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {retryInFlight ? 'Reintentando…' : 'Reintentar'}
+                {retryInFlight ? 'Retrying…' : 'Retry'}
               </button>
             {/if}
             {#if retryRemainingAttempts !== undefined}
               <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
                 {retryRemainingAttempts === 0
-                  ? 'Sin reintentos disponibles'
-                  : `${retryRemainingAttempts} restante${retryRemainingAttempts === 1 ? '' : 's'}`}
+                  ? 'No retries left'
+                  : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}
               </p>
             {/if}
           </div>
@@ -798,8 +794,8 @@
             {#if isWaiting && retryRemainingAttempts !== undefined}
               <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
                 {retryRemainingAttempts === 0
-                  ? 'Sin reintentos disponibles'
-                  : `${retryRemainingAttempts} reintento${retryRemainingAttempts === 1 ? '' : 's'} restante${retryRemainingAttempts === 1 ? '' : 's'}`}
+                  ? 'No retries left'
+                  : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}
               </p>
             {/if}
           </div>
