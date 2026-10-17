@@ -190,6 +190,15 @@ describe('Game page', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('sends leave_game when the game page unmounts', async () => {
+    const { unmount } = render(GamePage);
+
+    await screen.findByText('Ada');
+    unmount();
+
+    expect(mocks.client.send).toHaveBeenCalledWith('leave_game', { game_id: 'game-123' });
+  });
+
   it('loads host and guest from minimal public user endpoint responses', async () => {
     render(GamePage);
 
@@ -252,11 +261,46 @@ describe('Game page', () => {
       game_id: 'game-123',
       attempt: 1,
       remaining_attempts: 2,
-      idempotent: false
+      idempotent: false,
+      updated_at: '2026-10-17T12:00:00.000000+00:00'
     });
 
     expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
     expect(screen.getByText('2 reintentos restantes')).toBeInTheDocument();
+    expect(mocks.pushToast).toHaveBeenCalledWith(
+      'info',
+      'Retry sent. Waiting for the guest to respond...'
+    );
+  });
+
+  it('ignores an expiration event older than an acknowledged retry', async () => {
+    mocks.invitationState = 'expired';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: false,
+      updated_at: '2026-10-17T12:00:00.000000+00:00'
+    });
+    expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
+
+    mocks.pushToast.mockClear();
+    emit('invitation_expired', {
+      game_id: 'game-123',
+      updated_at: '2026-10-17T11:59:59.000000+00:00'
+    });
+
+    expect(mocks.pushToast).not.toHaveBeenCalled();
+    expect(screen.getByText('Invitation pending')).toBeInTheDocument();
+
+    emit('invitation_expired', {
+      game_id: 'game-123',
+      updated_at: '2026-10-17T12:01:00.000000+00:00'
+    });
+    expect(mocks.pushToast).toHaveBeenCalledWith('warning', expect.any(String));
   });
 
   it('shows the idempotent retry toast when the invitation was already pending', async () => {
@@ -267,12 +311,13 @@ describe('Game page', () => {
       game_id: 'game-123',
       attempt: 1,
       remaining_attempts: 2,
-      idempotent: true
+      idempotent: true,
+      updated_at: '2026-10-17T12:00:00.000000+00:00'
     });
 
     expect(mocks.pushToast).toHaveBeenCalledWith(
       'info',
-      'Esta invitación ya estaba pendiente. La UI se sincronizó.'
+      'This invitation was already pending. Your view is synced.'
     );
   });
 
