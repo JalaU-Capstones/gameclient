@@ -58,11 +58,16 @@ class OnlinePlayersStore {
       (payload) => this.#handleUserStatus(payload)
     );
     const offUpdated = client.on('user_updated', () => this.refresh());
+    const offClosed = client.on('closed', () => {
+      this.users = [];
+      this.playingIds = new SvelteSet<string>();
+    });
     this.#unsubscribeEvents = () => {
       offAuth();
       offOnline();
       offStatus();
       offUpdated();
+      offClosed();
     };
 
     if (client.isAlive()) this.refresh();
