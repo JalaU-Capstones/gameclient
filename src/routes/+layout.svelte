@@ -13,7 +13,8 @@
   import {
     bootstrapSession,
     clearBootstrapSessionCache,
-    handleAuthFailure
+    handleAuthFailure,
+    handleSessionReplaced
   } from '$lib/auth/bootstrap';
   import { navigationHistory } from '$lib/navigation/history';
   import {
@@ -86,6 +87,7 @@
   let presenceClient: ReturnType<typeof globalPresenceClient.getOrCreate> | null = null;
   let presenceUnsubscribers: (() => void)[] = [];
   let stopGameCreated: (() => void) | undefined;
+  const sessionReplacedUnsubscribers: Array<() => void> = [];
   const monitoredSocketClients = new WeakSet<object>();
   const sessionConflictPaths = new SvelteSet<string>();
   const sessionRetryingPaths = new SvelteSet<string>();
@@ -213,6 +215,15 @@
     if (genericConnectionAlertShown) return;
     genericConnectionAlertShown = true;
     authError = 'Connection lost. Reconnecting…';
+  }
+
+  function bindSessionReplacedHandler(client: WebSocketClient | null): void {
+    if (!client) return;
+    sessionReplacedUnsubscribers.push(
+      client.on('session_replaced', () => {
+        handleSessionReplaced($page.url.pathname || '/lobby');
+      })
+    );
   }
 
   function monitorSocket(client: WebSocketClient, path: string): void {
@@ -853,10 +864,11 @@
 
   onMount(() => {
     onlinePlayers.initialize();
-    const stop = globalGameplaysClient.subscribe((client) => {
+    const stopGameplaysBinding = globalGameplaysClient.subscribe((client) => {
       stopGameCreated?.();
       stopGameCreated = undefined;
       if (!client) return;
+      bindSessionReplacedHandler(client);
       stopGameCreated = client.on(
         'game_created',
         (payload: { game_id?: string; turn?: string } | undefined) => {
@@ -872,8 +884,15 @@
         }
       );
     });
+    const stopPresenceBinding = globalPresenceClient.subscribe((client) => {
+      if (!client) return;
+      bindSessionReplacedHandler(client);
+    });
     return () => {
-      stop();
+      stopGameplaysBinding();
+      stopPresenceBinding();
+      sessionReplacedUnsubscribers.forEach((unsubscribe) => unsubscribe());
+      sessionReplacedUnsubscribers.length = 0;
       stopGameCreated?.();
       stopGameCreated = undefined;
     };
@@ -893,6 +912,15 @@
       session.setLoading(false);
       if (import.meta.env.DEV) console.debug('[layout] hydration done', !!get(session).user);
     }
+  });
+
+  $effect(() => {
+    if (!$standbyMode) return;
+    if (import.meta.env.DEV) {
+      console.debug('[layout] standby mode; disconnecting all WebSockets');
+    }
+    globalGameplaysClient.disconnect();
+    globalPresenceClient.disconnect();
   });
 
   $effect(() => {
