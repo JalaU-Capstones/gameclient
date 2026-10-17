@@ -233,7 +233,7 @@ describe('InvitationHost', () => {
     }
   );
 
-  it('rejects and closes an invitation after 60 seconds', async () => {
+  it('closes the modal after 60 seconds without sending reject_invitation', async () => {
     vi.useFakeTimers();
     try {
       render(InvitationHost);
@@ -246,8 +246,8 @@ describe('InvitationHost', () => {
       await waitFor(() =>
         expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument()
       );
-      expect(mocks.send).toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
-      expect(mocks.pushToast).toHaveBeenCalledWith('warning', 'Your invitation expired.');
+      expect(mocks.send).not.toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
+      expect(mocks.pushToast).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

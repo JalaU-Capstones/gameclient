@@ -59,7 +59,7 @@
         pushToast('warning', userFacingMessage('INVITATION_EXPIRED'));
         return;
       }
-      reject('timeout');
+      closeModal();
     }, MODAL_TIMEOUT_MS);
     queueMicrotask(() => {
       dialogElement?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
@@ -125,9 +125,6 @@
     if (import.meta.env.DEV) console.debug('[invitation-host] reject', { source });
     boundClient.send('reject_invitation', { game_id: incomingInvite.game_id });
     closeModal();
-    if (source === 'timeout') {
-      pushToast('warning', userFacingMessage('INVITATION_EXPIRED'));
-    }
   }
 
   function accept() {
