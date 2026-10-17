@@ -87,7 +87,7 @@ export function createHttpClient(baseUrl = config.apiBaseUrl): HttpClient {
         parsed && typeof parsed === 'object' && 'code' in parsed
           ? String((parsed as { code: unknown }).code)
           : undefined;
-      throw new ApiError(message, response.status, code, parsed);
+      throw new ApiError(message, response.status, code, parsed, response.headers);
     }
 
     return parsed as T;
