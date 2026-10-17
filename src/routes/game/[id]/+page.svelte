@@ -282,7 +282,8 @@
           })
         );
         unsubscribers.push(
-          client.on('invitation_queued', () => {
+          client.on('invitation_queued', (payload: { game_id?: string } | undefined) => {
+            if (payload?.game_id && payload.game_id !== currentGameId) return;
             if (invitationState !== 'pending' && invitationState !== 'queued') return;
             invitationState = 'queued';
             pushToast(
@@ -294,7 +295,8 @@
         unsubscribers.push(
           client.on(
             'invitation_accepted',
-            (payload: { board?: number[][]; turn?: string } | undefined) => {
+            (payload: { game_id?: string; board?: number[][]; turn?: string } | undefined) => {
+              if (payload?.game_id && payload.game_id !== currentGameId) return;
               if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued')) {
                 return;
               }
@@ -308,7 +310,8 @@
           )
         );
         unsubscribers.push(
-          client.on('invitation_rejected', () => {
+          client.on('invitation_rejected', (payload: { game_id?: string } | undefined) => {
+            if (payload?.game_id && payload.game_id !== currentGameId) return;
             if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
               return;
             invitationState = 'rejected';
@@ -318,7 +321,8 @@
           })
         );
         unsubscribers.push(
-          client.on('invitation_expired', () => {
+          client.on('invitation_expired', (payload: { game_id?: string } | undefined) => {
+            if (payload?.game_id && payload.game_id !== currentGameId) return;
             if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
               return;
             invitationState = 'expired';
@@ -328,7 +332,8 @@
           })
         );
         unsubscribers.push(
-          client.on('invitation_canceled', () => {
+          client.on('invitation_canceled', (payload: { game_id?: string } | undefined) => {
+            if (payload?.game_id && payload.game_id !== currentGameId) return;
             if (gameEnded || (invitationState !== 'pending' && invitationState !== 'queued'))
               return;
             invitationState = 'canceled';
