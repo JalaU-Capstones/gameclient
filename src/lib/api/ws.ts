@@ -297,6 +297,18 @@ export function createWebSocketClient(options: WebSocketClientOptions): WebSocke
         return;
       }
 
+      if (closeEvent.code === 4409 && closeEvent.reason === 'session_replaced') {
+        shouldReconnect = false;
+        dispatchToHandlers('session_replaced', {
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          path
+        });
+        setState('disconnected');
+        socket = null;
+        return;
+      }
+
       if (closeEvent.code === 4409 && closeEvent.reason === 'session_already_active') {
         dispatchToHandlers('closed', {
           code: closeEvent.code,

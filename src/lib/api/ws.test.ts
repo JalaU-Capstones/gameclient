@@ -425,8 +425,10 @@ describe('createWebSocketClient', () => {
         baseReconnectDelayMs: 1
       });
       const closeHandler = vi.fn();
+      const sessionReplacedHandler = vi.fn();
       const authFailedHandler = vi.fn();
       client.on('closed', closeHandler);
+      client.on('session_replaced', sessionReplacedHandler);
       client.on('auth_failed', authFailedHandler);
       client.connect('session-conflict-token');
 
@@ -435,7 +437,8 @@ describe('createWebSocketClient', () => {
       socket.onclose?.({ code: 4409, reason: 'session_replaced' } as CloseEvent);
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(closeHandler).toHaveBeenCalledWith({
+      expect(closeHandler).not.toHaveBeenCalled();
+      expect(sessionReplacedHandler).toHaveBeenCalledWith({
         code: 4409,
         reason: 'session_replaced',
         path: '/api/v2/ws/gameplays'
@@ -446,7 +449,8 @@ describe('createWebSocketClient', () => {
 
       client.disconnect();
       expect(socket.close).not.toHaveBeenCalled();
-      expect(closeHandler).toHaveBeenCalledOnce();
+      expect(closeHandler).not.toHaveBeenCalled();
+      expect(sessionReplacedHandler).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
       vi.stubGlobal('WebSocket', originalWebSocket);
