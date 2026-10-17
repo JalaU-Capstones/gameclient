@@ -1,19 +1,35 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { ApiError } from '$lib/api/errors';
   import { gameplaysApi } from '$lib/api/gameplays';
   import type { GameplayRecord } from '$lib/api/gameplays';
   import { usersApi } from '$lib/api/user';
   import { userFacingMessage } from '$lib/errors/messages';
   import { currentUser } from '$lib/stores/session';
+  import { globalGameplaysClient, standbyMode } from '$lib/stores/ws';
+  import { pushToast } from '$lib/stores/toasts';
   import { getOutcome } from '$lib/utils/outcome';
   import type { Outcome } from '$lib/utils/outcome';
   import { sanitizeDisplayName } from '$lib/utils/text';
+  import CountdownButton from '$lib/components/CountdownButton.svelte';
+
+  interface RetryState {
+    inFlight: boolean;
+    retryAfter?: number;
+    remaining?: number;
+    attempt?: number;
+    key: number;
+  }
 
   let gamesList = $state<GameplayRecord[]>([]);
   let isLoading = $state(true);
   let error = $state('');
   let names = $state<Record<string, string>>({});
+  let retryStates = new SvelteMap<string, RetryState>();
+  let currentRetryGameId: string | null = null;
+  let unsubscribers: (() => void)[] = [];
+  let stopClient: (() => void) | null = null;
 
   const myId = $derived($currentUser?.id ?? '');
 
@@ -69,7 +85,100 @@
     }
   }
 
-  onMount(loadGames);
+  function handleRetry(game: GameplayRecord) {
+    if (!game.id) return;
+    if (game.hostPlayer !== myId) return;
+    if (
+      game.invitationState !== 'rejected' &&
+      game.invitationState !== 'expired' &&
+      game.invitationState !== 'canceled'
+    )
+      return;
+    const current = retryStates.get(game.id);
+    if (current?.inFlight) return;
+    if (current?.retryAfter !== undefined && current.retryAfter > 0) return;
+
+    currentRetryGameId = game.id;
+    retryStates.set(game.id, {
+      inFlight: true,
+      key: (current?.key ?? 0) + 1
+    });
+    const client = globalGameplaysClient.getOrCreate();
+    if (!client.isAlive()) {
+      pushToast('warning', 'No se pudo reintentar. Vuelve a iniciar sesión.');
+      retryStates.delete(game.id);
+      currentRetryGameId = null;
+      return;
+    }
+    client.send('retry_invitation', { game_id: game.id });
+  }
+
+  onMount(() => {
+    loadGames();
+    stopClient = globalGameplaysClient.subscribe((client) => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribers = [];
+      if (!client) return;
+
+      unsubscribers.push(
+        client.on(
+          'invitation_retry_accepted',
+          (
+            payload: { game_id?: string; attempt?: number; remaining_attempts?: number } | undefined
+          ) => {
+            if (!payload?.game_id) return;
+            const state = retryStates.get(payload.game_id);
+            if (!state) return;
+            retryStates.set(payload.game_id, {
+              inFlight: false,
+              remaining: payload.remaining_attempts ?? 0,
+              attempt: payload.attempt ?? 0,
+              key: state.key + 1
+            });
+            gamesList = gamesList.map((game) =>
+              game.id === payload.game_id
+                ? { ...game, invitationState: 'pending', matchResult: null }
+                : game
+            );
+          }
+        )
+      );
+
+      unsubscribers.push(
+        client.on(
+          'error',
+          (payload: { code?: string; retry_after_seconds?: number } | undefined) => {
+            if (!payload || payload.code !== 'RETRY_LIMIT_EXCEEDED') return;
+            const gameId = currentRetryGameId;
+            if (!gameId) return;
+            const state = retryStates.get(gameId);
+            if (!state) return;
+            retryStates.set(gameId, {
+              inFlight: false,
+              retryAfter: payload.retry_after_seconds ?? 60,
+              remaining: 0,
+              attempt: state.attempt ?? 0,
+              key: state.key + 1
+            });
+          }
+        )
+      );
+    });
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribers = [];
+      stopClient?.();
+      stopClient = null;
+    };
+  });
+
+  onDestroy(() => {
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
+    unsubscribers = [];
+    stopClient?.();
+    stopClient = null;
+  });
 </script>
 
 <section class="space-y-10 py-8 mx-auto max-w-4xl">
@@ -104,13 +213,45 @@
               <p class="text-xl font-mono truncate">{rivalName(game)}</p>
               <p class="text-sm text-[var(--text-muted)]">{formatDate(game.createdDate)}</p>
             </div>
-            <span
-              class="self-start md:self-auto px-6 py-2 uppercase tracking-widest text-sm rounded-full border whitespace-nowrap {outcomeClasses[
-                getOutcome(game, myId)
-              ]}"
-            >
-              {outcomeLabel[getOutcome(game, myId)]}
-            </span>
+            <div class="flex flex-col items-start gap-2 md:items-end">
+              <span
+                class="self-start md:self-auto px-6 py-2 uppercase tracking-widest text-sm rounded-full border whitespace-nowrap {outcomeClasses[
+                  getOutcome(game, myId)
+                ]}"
+              >
+                {outcomeLabel[getOutcome(game, myId)]}
+              </span>
+              {#if game.hostPlayer === myId && (getOutcome(game, myId) === 'rejected' || getOutcome(game, myId) === 'expired' || getOutcome(game, myId) === 'canceled')}
+                {@const retryState = retryStates.get(game.id)}
+                {#if retryState?.retryAfter !== undefined && retryState.retryAfter > 0}
+                  {#key retryState.key}
+                    <CountdownButton
+                      seconds={retryState.retryAfter}
+                      disabled={retryState.inFlight || $standbyMode}
+                      onclick={() => handleRetry(game)}
+                      label="Reintentar en"
+                      class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  {/key}
+                {:else}
+                  <button
+                    type="button"
+                    disabled={retryState?.inFlight || $standbyMode}
+                    onclick={() => handleRetry(game)}
+                    class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {retryState?.inFlight ? 'Reintentando…' : 'Reintentar'}
+                  </button>
+                {/if}
+                {#if retryState?.remaining !== undefined}
+                  <span class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+                    {retryState.remaining === 0
+                      ? 'Sin reintentos'
+                      : `${retryState.remaining} restante${retryState.remaining === 1 ? '' : 's'}`}
+                  </span>
+                {/if}
+              {/if}
+            </div>
           </li>
         {/each}
       </ul>
