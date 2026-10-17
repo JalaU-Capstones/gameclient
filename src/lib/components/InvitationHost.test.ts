@@ -107,6 +107,56 @@ describe('InvitationHost', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('opens the modal for a promoted invitation and shows the wait message', async () => {
+    render(InvitationHost);
+
+    emit('invitation_promoted', {
+      game_id: VALID_GAME_ID,
+      host: { id: 'guest-1', name: 'Bob' }
+    });
+
+    expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
+    expect(screen.getByText('Esta invitación estaba en espera.')).toBeInTheDocument();
+  });
+
+  it('opens the modal for a fresh invitation without the wait message', async () => {
+    render(InvitationHost);
+
+    emit('invitation_received', {
+      game_id: VALID_GAME_ID,
+      host: { id: 'guest-1', name: 'Bob' }
+    });
+
+    expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
+    expect(screen.queryByText('Esta invitación estaba en espera.')).not.toBeInTheDocument();
+  });
+
+  it.each(['invitation_received', 'invitation_promoted'])(
+    'accepts %s with the correct game id',
+    async (event) => {
+      render(InvitationHost);
+      emit(event, validInvite());
+      await screen.findByRole('button', { name: 'Accept' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+      expect(mocks.send).toHaveBeenCalledWith('accept_invitation', { game_id: VALID_GAME_ID });
+    }
+  );
+
+  it.each(['invitation_received', 'invitation_promoted'])(
+    'rejects %s with the correct game id',
+    async (event) => {
+      render(InvitationHost);
+      emit(event, validInvite());
+      await screen.findByRole('button', { name: 'Decline' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Decline' }));
+
+      expect(mocks.send).toHaveBeenCalledWith('reject_invitation', { game_id: VALID_GAME_ID });
+    }
+  );
+
   it('ignores invitations with invalid UUIDs', async () => {
     render(InvitationHost);
 

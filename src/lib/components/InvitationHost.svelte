@@ -14,6 +14,7 @@
   interface IncomingInvite {
     game_id: string;
     host: { id: string; name: string };
+    promoted?: boolean;
   }
 
   interface Props {
@@ -76,7 +77,7 @@
     openModal(invite);
   }
 
-  function handleInvitation(payload: unknown) {
+  function handleInvitation(payload: unknown, options: { promoted?: boolean } = {}): void {
     if (
       !payload ||
       typeof payload !== 'object' ||
@@ -104,7 +105,8 @@
       host: {
         id: rawInvite.host.id,
         name: sanitizeDisplayName(rawInvite.host.name)
-      }
+      },
+      promoted: options.promoted ?? false
     };
     if (!invite.host.name) return;
 
@@ -189,6 +191,11 @@
     if (import.meta.env.DEV) console.debug('[invitation-host] client bound');
 
     unsubscribers.push(client.on('invitation_received', handleInvitation));
+    unsubscribers.push(
+      client.on('invitation_promoted', (payload: unknown) => {
+        handleInvitation(payload, { promoted: true });
+      })
+    );
     unsubscribers.push(
       client.on('invitation_accepted', (payload: { game_id?: string } | undefined) => {
         if (!payload || !isUuid(payload.game_id)) {
@@ -280,6 +287,9 @@
       <p class="text-lg text-[var(--text-secondary)]">
         <span class="font-bold text-[var(--neon-cyan)]">{incomingInvite.host.name}</span> wants to play.
       </p>
+      {#if incomingInvite.promoted}
+        <p class="text-sm text-[var(--text-muted)] italic">Esta invitación estaba en espera.</p>
+      {/if}
       <div class="flex gap-4">
         <button
           type="button"
