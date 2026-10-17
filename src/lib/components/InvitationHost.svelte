@@ -33,7 +33,8 @@
   let pendingInvite: IncomingInvite | null = null;
   let stopCurrentUser: (() => void) | undefined;
 
-  const MODAL_TIMEOUT_MS = 60_000;
+  // Wait beyond the server TTL and expiry-loop interval so its notification can close the modal first.
+  const MODAL_TIMEOUT_MS = 70_000;
   const isDisabled = $derived(disabled || $standbyMode);
 
   function closeModal() {
@@ -119,10 +120,10 @@
     displayInvite(invite, $currentUser?.id);
   }
 
-  function reject(source: 'user' | 'timeout' = 'user') {
+  function reject(): void {
     if (!incomingInvite || isDisabled || !boundClient || isSubmitting) return;
-    if (source === 'user') sounds.play('click');
-    if (import.meta.env.DEV) console.debug('[invitation-host] reject', { source });
+    sounds.play('click');
+    if (import.meta.env.DEV) console.debug('[invitation-host] reject');
     boundClient.send('reject_invitation', { game_id: incomingInvite.game_id });
     closeModal();
   }
@@ -285,13 +286,15 @@
         <span class="font-bold text-[var(--neon-cyan)]">{incomingInvite.host.name}</span> wants to play.
       </p>
       {#if incomingInvite.promoted}
-        <p class="text-sm text-[var(--text-muted)] italic">Esta invitación estaba en espera.</p>
+        <p class="text-sm text-[var(--text-muted)] italic">
+          This invitation was waiting in the queue.
+        </p>
       {/if}
       <div class="flex gap-4">
         <button
           type="button"
           disabled={isDisabled || isSubmitting}
-          onclick={() => reject()}
+          onclick={reject}
           class="flex-1 rounded-full border border-[var(--text-muted)] px-4 py-3 text-sm uppercase tracking-widest text-[var(--text-muted)] transition hover:bg-[var(--text-muted)] hover:text-[var(--bg)]"
         >
           Decline
