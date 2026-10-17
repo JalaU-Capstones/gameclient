@@ -15,6 +15,7 @@
   import type { InvitationState, PublicUser, Gameplay } from '$lib/types/api';
   import { userFacingMessage } from '$lib/errors/messages';
   import OnlinePlayersMenu from '$lib/components/OnlinePlayersMenu.svelte';
+  import CountdownButton from '$lib/components/CountdownButton.svelte';
   import { isUuid, safeRandomUuid } from '$lib/utils/uuid';
   import { sanitizeDisplayName } from '$lib/utils/text';
 
@@ -28,6 +29,10 @@
     [0, 0, 0]
   ]);
   let invitationState = $state<InvitationState>('accepted');
+  let retryInFlight = $state(false);
+  let retryAttempt = $state(0);
+  let retryRemainingAttempts = $state<number | undefined>(undefined);
+  let retryAfterSeconds = $state<number | undefined>(undefined);
   let turn = $state<string>('');
   let winner = $state<string | null>(null);
   let endReason = $state<string | null>(null);
@@ -42,7 +47,6 @@
   let authRetryUsed = false;
   let moveDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let lastMoveRequestId: string | null = null;
-  let lastMoveCell: { row: number; col: number } | null = null;
 
   const MOVE_DEADLINE_MS = 8_000;
 
@@ -57,7 +61,6 @@
     }
     moveInFlight = false;
     lastMoveRequestId = null;
-    lastMoveCell = null;
   }
 
   function armMoveDeadline() {
@@ -65,9 +68,6 @@
     moveDeadlineTimer = setTimeout(() => {
       if (!moveInFlight) return;
       clearMoveInFlight();
-      if (lastMoveCell) {
-        void lastMoveCell;
-      }
       pushToast('warning', userFacingMessage('MOVE_TIMEOUT'));
     }, MOVE_DEADLINE_MS);
   }
@@ -80,6 +80,13 @@
     invitationState === 'accepted' && $currentUser?.id === turn && !isGameOver
   );
   let isWaiting = $derived(invitationState === 'pending' || invitationState === 'queued');
+  let canRetry = $derived(
+    invitationState === 'rejected' ||
+      invitationState === 'expired' ||
+      invitationState === 'canceled'
+  );
+  let isHost = $derived(!!hostUser && hostUser.id === $currentUser?.id);
+  let showRetryButton = $derived(canRetry && isHost && !isGameOver);
 
   function handleGameplayAuthFailure(failure: unknown, gameId: string) {
     handleAuthFailure(
@@ -161,7 +168,10 @@
     clearMoveInFlight();
     error = '';
     lastMoveRequestId = null;
-    lastMoveCell = null;
+    retryInFlight = false;
+    retryAttempt = 0;
+    retryRemainingAttempts = undefined;
+    retryAfterSeconds = undefined;
     isLoading = true;
     waitingForRematch = false;
 
@@ -223,7 +233,6 @@
             ) => {
               if (payload?.client_request_id && payload.client_request_id === lastMoveRequestId) {
                 lastMoveRequestId = null;
-                lastMoveCell = null;
               }
               if (gameEnded) {
                 clearMoveInFlight();
@@ -233,7 +242,6 @@
               if (payload?.turn) turn = payload.turn;
               clearMoveInFlight();
               lastMoveRequestId = null;
-              lastMoveCell = null;
             }
           )
         );
@@ -330,18 +338,82 @@
           })
         );
         unsubscribers.push(
-          client.on('error', (payload: { code?: string; message?: string } | undefined) => {
-            clearMoveInFlight();
-            if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
-              waitingForRematch = false;
+          client.on(
+            'invitation_replaced',
+            (payload: { game_id?: string; reason?: string } | undefined) => {
+              if (payload?.game_id && payload.game_id !== currentGameId) return;
+              pushToast('warning', 'Otra persona aceptó la invitación antes que tú.');
+              clearMoveInFlight();
+              retryInFlight = false;
+              setTimeout(() => {
+                if ($standbyMode) return;
+                goto(resolve('/lobby'));
+              }, 2500);
             }
-            if (payload?.code === 'GAME_NOT_ACTIVE') {
-              error = userFacingMessage(payload.code, 'That game has already ended.');
-              return;
+          )
+        );
+        unsubscribers.push(
+          client.on(
+            'invitation_retry_accepted',
+            (
+              payload:
+                | {
+                    game_id?: string;
+                    attempt?: number;
+                    remaining_attempts?: number;
+                    idempotent?: boolean;
+                  }
+                | undefined
+            ) => {
+              if (!payload || !payload.game_id) return;
+              if (payload.game_id !== currentGameId) return;
+              retryInFlight = false;
+              retryAttempt = payload.attempt ?? 0;
+              retryRemainingAttempts = payload.remaining_attempts ?? undefined;
+              retryAfterSeconds = undefined;
+              invitationState = 'pending';
+              pushToast(
+                'info',
+                payload.idempotent === true
+                  ? 'Esta invitación ya estaba pendiente. La UI se sincronizó.'
+                  : 'Reintento enviado. Esperando respuesta del invitado…'
+              );
             }
-            error = userFacingMessage(payload?.code, 'Something went wrong. Please try again.');
-            setTimeout(() => (error = ''), 3000);
-          })
+          )
+        );
+        unsubscribers.push(
+          client.on(
+            'error',
+            (
+              payload: { code?: string; message?: string; retry_after_seconds?: number } | undefined
+            ) => {
+              clearMoveInFlight();
+              if (payload?.code && payload.code !== 'OPPONENT_OFFLINE') {
+                waitingForRematch = false;
+              }
+              if (payload?.code === 'RETRY_LIMIT_EXCEEDED') {
+                retryInFlight = false;
+                const seconds = payload.retry_after_seconds ?? 60;
+                retryAfterSeconds = seconds;
+                error = `Límite de reintentos alcanzado. Espera ${seconds} segundos.`;
+                setTimeout(() => (error = ''), 3000);
+                return;
+              }
+              if (payload?.code === 'CREATE_GAME_RATE_LIMITED') {
+                retryInFlight = false;
+                const seconds = payload.retry_after_seconds ?? 60;
+                error = `Demasiadas invitaciones. Espera ${seconds} segundos.`;
+                setTimeout(() => (error = ''), 3000);
+                return;
+              }
+              if (payload?.code === 'GAME_NOT_ACTIVE') {
+                error = userFacingMessage(payload.code, 'That game has already ended.');
+                return;
+              }
+              error = userFacingMessage(payload?.code, 'Something went wrong. Please try again.');
+              setTimeout(() => (error = ''), 3000);
+            }
+          )
         );
         unsubscribers.push(
           client.on('auth_failed', (payload: { code?: number; reason?: string } | undefined) => {
@@ -410,7 +482,6 @@
 
     const clientRequestId = safeRandomUuid();
     lastMoveRequestId = clientRequestId;
-    lastMoveCell = { row, col };
     moveInFlight = true;
     armMoveDeadline();
 
@@ -449,6 +520,18 @@
     if ($standbyMode || !currentGameId) return;
     gameplaysClient.send('leave_game', { game_id: currentGameId });
     goto(resolve('/lobby'));
+  }
+
+  function handleRetry() {
+    if ($standbyMode || retryInFlight || !currentGameId || !isHost) return;
+    if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) return;
+
+    retryInFlight = true;
+    retryAttempt += 1;
+    retryRemainingAttempts = undefined;
+    retryAfterSeconds = undefined;
+    sounds.play('click');
+    gameplaysClient.send('retry_invitation', { game_id: currentGameId });
   }
 
   function handleInviteOnlinePlayer(userId: string) {
@@ -626,6 +709,46 @@
       </div>
     {:else}
       <div class="mt-8 space-y-4">
+        {#if showRetryButton}
+          <div
+            class="rounded-2xl border border-[var(--neon-magenta)] bg-[var(--cell)] p-4 shadow-[var(--glow-magenta)]"
+          >
+            <p class="text-sm text-[var(--text-secondary)] mb-3">
+              La invitación terminó en <span class="font-bold uppercase">{invitationState}</span>.
+              {#if isHost}
+                Puedes reintentar con el mismo invitado.
+              {/if}
+            </p>
+            {#if retryAfterSeconds !== undefined && retryAfterSeconds > 0}
+              {#key retryAttempt}
+                <CountdownButton
+                  seconds={retryAfterSeconds}
+                  disabled={$standbyMode || retryInFlight}
+                  onclick={handleRetry}
+                  label="Reintentar en"
+                  class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              {/key}
+            {:else}
+              <button
+                type="button"
+                disabled={$standbyMode || retryInFlight}
+                onclick={handleRetry}
+                class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl hover:bg-[var(--neon-cyan)] hover:text-black font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {retryInFlight ? 'Reintentando…' : 'Reintentar'}
+              </button>
+            {/if}
+            {#if retryRemainingAttempts !== undefined}
+              <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
+                {retryRemainingAttempts === 0
+                  ? 'Sin reintentos disponibles'
+                  : `${retryRemainingAttempts} restante${retryRemainingAttempts === 1 ? '' : 's'}`}
+              </p>
+            {/if}
+          </div>
+        {/if}
+
         {#if isWaiting}
           <div
             class="rounded-2xl border border-[var(--neon-magenta)] bg-[var(--cell)] p-4 shadow-[var(--glow-magenta)]"
@@ -643,6 +766,13 @@
                 Cancel
               </button>
             </div>
+            {#if isWaiting && retryRemainingAttempts !== undefined}
+              <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
+                {retryRemainingAttempts === 0
+                  ? 'Sin reintentos disponibles'
+                  : `${retryRemainingAttempts} reintento${retryRemainingAttempts === 1 ? '' : 's'} restante${retryRemainingAttempts === 1 ? '' : 's'}`}
+              </p>
+            {/if}
           </div>
         {/if}
 

@@ -209,6 +209,116 @@ describe('Game page', () => {
     expect(screen.queryByText(rawMessage)).not.toBeInTheDocument();
   });
 
+  it('shows a toast and redirects after a replacement invitation', async () => {
+    vi.useFakeTimers();
+    try {
+      render(GamePage);
+      await screen.findByText('Ada');
+
+      emit('invitation_replaced', { game_id: 'game-123', reason: 'target_busy' });
+
+      expect(mocks.pushToast).toHaveBeenCalledWith(
+        'warning',
+        'Otra persona aceptó la invitación antes que tú.'
+      );
+      expect(mocks.goto).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(2499);
+      expect(mocks.goto).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(mocks.goto).toHaveBeenCalledWith('/lobby');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores invitation_replaced events for a different game', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_replaced', { game_id: 'other-game', reason: 'target_busy' });
+
+    expect(mocks.pushToast).not.toHaveBeenCalled();
+    expect(mocks.goto).not.toHaveBeenCalled();
+  });
+
+  it('marks the invitation as pending again after a retry is accepted', async () => {
+    mocks.invitationState = 'rejected';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: false
+    });
+
+    expect(await screen.findByText('Invitation pending')).toBeInTheDocument();
+    expect(screen.getByText('2 reintentos restantes')).toBeInTheDocument();
+  });
+
+  it('shows the idempotent retry toast when the invitation was already pending', async () => {
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('invitation_retry_accepted', {
+      game_id: 'game-123',
+      attempt: 1,
+      remaining_attempts: 2,
+      idempotent: true
+    });
+
+    expect(mocks.pushToast).toHaveBeenCalledWith(
+      'info',
+      'Esta invitación ya estaba pendiente. La UI se sincronizó.'
+    );
+  });
+
+  it('shows a countdown button after RETRY_LIMIT_EXCEEDED', async () => {
+    mocks.invitationState = 'rejected';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    emit('error', {
+      code: 'RETRY_LIMIT_EXCEEDED',
+      message: 'limit reached',
+      retry_after_seconds: 30
+    });
+
+    expect(await screen.findByTestId('countdown-button')).toBeInTheDocument();
+    expect(screen.getByTestId('countdown-button')).toHaveTextContent('Reintentar en (30s)');
+  });
+
+  it('sends retry_invitation when the host clicks the retry button', async () => {
+    mocks.invitationState = 'rejected';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(mocks.client.send).toHaveBeenCalledWith('retry_invitation', { game_id: 'game-123' });
+  });
+
+  it('hides the retry button for the guest', async () => {
+    session.setUser({ ...currentUser, id: 'guest', name: 'Bob' });
+    mocks.invitationState = 'rejected';
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
+  it('disables the retry button in standby mode', async () => {
+    mocks.invitationState = 'rejected';
+    mocks.setStandbyMode(true);
+    render(GamePage);
+    await screen.findByText('Ada');
+
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeDisabled();
+  });
+
   it('subscribes once when the gameplay socket is already connected', async () => {
     render(GamePage);
     await screen.findByText('Ada');
