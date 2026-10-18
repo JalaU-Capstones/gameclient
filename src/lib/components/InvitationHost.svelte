@@ -274,23 +274,28 @@
   >
     <div
       bind:this={dialogElement}
-      class="w-full max-w-md space-y-6 rounded-2xl border-2 border-neon-magenta bg-cell p-8 text-center shadow-glow-magenta"
+      class="w-full max-w-[calc(100vw-2rem)] space-y-6 rounded-2xl border-2 border-neon-magenta bg-cell p-6 text-center shadow-glow-magenta sm:max-w-md sm:p-8"
     >
-      <h3 id="invite-title" class="text-2xl font-bold uppercase tracking-widest text-neon-magenta">
+      <h3
+        id="invite-title"
+        class="break-words text-2xl font-bold uppercase tracking-widest text-neon-magenta sm:text-3xl"
+      >
         Challenger Approaching!
       </h3>
-      <p class="text-lg text-fg-secondary">
+      <p class="break-words text-lg text-fg-secondary">
         <span class="font-bold text-neon-cyan">{incomingInvite.host.name}</span> wants to play.
       </p>
       {#if incomingInvite.promoted}
-        <p class="text-sm text-fg-muted italic">This invitation was waiting in the queue.</p>
+        <p class="break-words text-sm text-fg-muted italic">
+          This invitation was waiting in the queue.
+        </p>
       {/if}
-      <div class="flex gap-4">
+      <div class="flex w-full flex-col gap-3 sm:flex-row">
         <button
           type="button"
           disabled={isDisabled || isSubmitting}
           onclick={reject}
-          class="flex-1 rounded-full border border-fg-muted px-4 py-3 text-sm uppercase tracking-widest text-fg-muted transition hover:bg-fg-muted hover:text-bg"
+          class="w-full rounded-full border border-fg-muted px-4 py-3 text-sm uppercase tracking-widest text-fg-muted transition hover:bg-fg-muted hover:text-bg sm:flex-1"
         >
           Decline
         </button>
@@ -298,7 +303,7 @@
           type="button"
           disabled={isDisabled || isSubmitting}
           onclick={accept}
-          class="flex-1 rounded-full border border-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-neon-cyan shadow-glow-cyan transition hover:bg-neon-cyan hover:text-bg"
+          class="w-full rounded-full border border-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-neon-cyan shadow-glow-cyan transition hover:bg-neon-cyan hover:text-bg sm:flex-1"
         >
           Accept
         </button>
