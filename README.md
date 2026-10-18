@@ -1,6 +1,10 @@
 # GameClient
 
-Frontend de SvelteKit para el juego. Este cliente encapsula el acceso HTTP y WebSocket hacia el backend FastAPI para que las pantallas de UI solo consuman módulos de API y stores, sin tener que manejar fetch ni sockets directamente.
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions)](https://github.com/features/actions)
+[![Coverage](https://img.shields.io/badge/Coverage-Codecov-00B2A9?logo=codecov)](https://codecov.io/)
+[![Deploy](https://img.shields.io/badge/Deploy-Render-46E3B7?logo=render)](https://render.com/)
+
+Frontend SvelteKit for the game. This client wraps HTTP and WebSocket access to the FastAPI backend so UI screens only consume API modules and stores instead of directly dealing with fetch or socket logic.
 
 ## Stack
 
@@ -11,13 +15,13 @@ Frontend de SvelteKit para el juego. Este cliente encapsula el acceso HTTP y Web
 - pnpm
 - Docker
 
-## Requisitos
+## Requirements
 
 - Node 22+
 - pnpm 9+
 - Docker
 
-## Instalación
+## Installation
 
 ```bash
 pnpm install
@@ -26,7 +30,7 @@ cp .env.example .env
 
 ## Deployment
 
-La guía completa de despliegue del frontend está en [./.docs/deployment/README.md](./.docs/deployment/README.md). Cubre ambos artefactos del repositorio: el sitio estático en Render y la imagen Docker para self-hosting, con la validación de `ORIGIN`, los headers de proxy inverso y la checklist de pre-demo.
+The full frontend deployment guide lives in [./.docs/deployment/README.md](./.docs/deployment/README.md). It covers both artifacts in the repository: the static site on Render and the Docker image for self-hosting, including `ORIGIN` validation, reverse-proxy headers, and the pre-demo checklist.
 
 ## Security
 
@@ -36,34 +40,34 @@ La guía completa de despliegue del frontend está en [./.docs/deployment/README
 - Client-side debounce is defense in depth; the backend rate limit remains the source of truth for abuse protection.
 - The invitation modal uses a focus trap and maps `Escape` to `reject` to keep the flow safe and accessible.
 
-## Comandos con Makefile
+## Makefile commands
 
-| Comando               | Descripción                             |
-| --------------------- | --------------------------------------- |
-| `make install`        | Instala dependencias con pnpm           |
-| `make dev`            | Inicia el servidor de desarrollo        |
-| `make build`          | Compila en producción                   |
-| `make preview`        | Previsualiza el build                   |
-| `make start`          | Sirve el build con adapter-node         |
-| `make test`           | Ejecuta los tests                       |
-| `make test-cov`       | Ejecuta tests con cobertura             |
-| `make lint`           | Ejecuta Prettier y ESLint               |
-| `make format`         | Formatea el proyecto                    |
-| `make check`          | Ejecuta el typecheck de Svelte          |
-| `make clean`          | Elimina cachés y artefactos             |
-| `make docker-build`   | Compila la imagen Docker                |
-| `make docker-up`      | Levanta el contenedor                   |
-| `make docker-down`    | Detiene el contenedor                   |
-| `make docker-rebuild` | Reconstruye sin caché y reinicia Docker |
-| `make docker-logs`    | Muestra logs del contenedor             |
+| Command               | Description                              |
+| --------------------- | ---------------------------------------- |
+| `make install`        | Install dependencies with pnpm           |
+| `make dev`            | Start the development server             |
+| `make build`          | Build for production                     |
+| `make preview`        | Preview the production build             |
+| `make start`          | Serve the build with adapter-node        |
+| `make test`           | Run the test suite                       |
+| `make test-cov`       | Run tests with coverage                  |
+| `make lint`           | Run Prettier and ESLint                  |
+| `make format`         | Format the project                       |
+| `make check`          | Run the Svelte typecheck                 |
+| `make clean`          | Remove caches and build artifacts        |
+| `make docker-build`   | Build the Docker image                   |
+| `make docker-up`      | Start the container                      |
+| `make docker-down`    | Stop the container                       |
+| `make docker-rebuild` | Rebuild without cache and restart Docker |
+| `make docker-logs`    | Show the container logs                  |
 
-## Desarrollo
+## Development
 
 ```bash
 pnpm dev
 ```
 
-La aplicación se ejecuta en `http://localhost:5173` y usa el proxy de Vite para redirigir `/api` y `/health` hacia `http://localhost:8080`.
+The application runs at `http://localhost:5173` and uses the Vite proxy to forward `/api` and `/health` to `http://localhost:8080`.
 
 ## Invitation flow
 
@@ -519,9 +523,9 @@ pnpm test
 pnpm test:cov
 ```
 
-La suite de clientes HTTP/WebSocket usa mocks reales y el umbral de cobertura actual es del 70%.
+The HTTP/WebSocket client suite uses real mocks and the current coverage threshold is 70%.
 
-## Lint y calidad
+## Lint and quality
 
 ```bash
 pnpm lint
@@ -529,20 +533,33 @@ pnpm check
 pnpm format
 ```
 
-## Diseño visual
+## CI and release pipeline
 
-La interfaz usa una estética retro tipo arcade con fondo oscuro y colores neon. Los componentes visuales se mantienen mínimos en D2 para dejar la capa de negocio y la validación del backend bien estabilizada.
+| Stage               | Purpose                                            | Trigger              |
+| ------------------- | -------------------------------------------------- | -------------------- |
+| `quality`           | `pnpm lint` and `pnpm check`                       | every PR and push    |
+| `test`              | `pnpm test:cov` on Node 22 and 24                  | every PR and push    |
+| `coverage`          | Codecov upload when `CODECOV_TOKEN` is configured  | main branch          |
+| `docker`            | Build verification via the production Docker image | main branch and tags |
+| `verify-production` | Render health check via `/health`                  | main branch          |
 
-### Recursos y créditos
+Optional environment variables:
 
-Los sonidos arcade, la tipografía y el favicon están documentados en
-[`CREDITS.md`](./CREDITS.md), con sus respectivas licencias (CC0, SIL OFL,
-MIT).
+- `CODECOV_TOKEN` — uploads coverage to Codecov when present.
+- `PRODUCTION_URL` — overrides the production health-check URL; defaults to the public Render deployment.
 
-## Integración continua
+## Visual design
 
-El proyecto usa Vitest y SvelteKit para validar calidad en cada cambio. La cobertura mínima se deja en 70% para evitar regresiones en la capa de cliente.
+The interface uses a dark arcade-inspired aesthetic with neon accents. Visual components stay intentionally minimal so the business logic and backend validation remain the stable core of the experience.
 
-## Licencia
+### Resources and credits
 
-Este proyecto se distribuye bajo la licencia MIT. Consulte [LICENSE](LICENSE).
+The arcade sounds, typeface, and favicon are documented in [`CREDITS.md`](./CREDITS.md), with their respective licenses (CC0, SIL OFL, MIT).
+
+## Continuous integration
+
+The project uses Vitest and SvelteKit to validate quality on every change. The minimum coverage floor is 70% to guard against regressions in the client layer.
+
+## License
+
+This project is distributed under the MIT license. See [LICENSE](LICENSE).
