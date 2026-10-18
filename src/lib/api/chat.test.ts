@@ -4,14 +4,51 @@ import WS from 'vitest-websocket-mock';
 import { buildWsUrl } from '$lib/config';
 import { createChatClient } from './chat';
 
+class MockWebSocket {
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static instances: MockWebSocket[] = [];
+
+  private listeners = new Map<string, Set<(event: Event | CloseEvent) => void>>();
+  readyState = MockWebSocket.OPEN;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+  send = vi.fn();
+  close = vi.fn((code?: number, reason?: string) => {
+    this.readyState = MockWebSocket.CLOSED;
+    const closeEvent = { code: code ?? 1000, reason: reason ?? 'closed' } as CloseEvent;
+    this.onclose?.(closeEvent);
+    this.listeners.get('close')?.forEach((handler) => handler(closeEvent));
+  });
+
+  addEventListener(type: string, handler: (event: Event | CloseEvent) => void): void {
+    const set = this.listeners.get(type) ?? new Set<(event: Event | CloseEvent) => void>();
+    set.add(handler);
+    this.listeners.set(type, set);
+  }
+
+  removeEventListener(type: string, handler: (event: Event | CloseEvent) => void): void {
+    this.listeners.get(type)?.delete(handler);
+  }
+
+  constructor() {
+    MockWebSocket.instances.push(this);
+  }
+}
+
 describe('createChatClient', () => {
   beforeEach(() => {
     vi.useRealTimers();
+    MockWebSocket.instances = [];
     WS.clean();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    MockWebSocket.instances = [];
     WS.clean();
   });
 
@@ -234,28 +271,6 @@ describe('createChatClient', () => {
     const originalWebSocket = globalThis.WebSocket;
     vi.useFakeTimers();
 
-    class MockWebSocket {
-      static OPEN = 1;
-      static CLOSING = 2;
-      static CLOSED = 3;
-      static instances: MockWebSocket[] = [];
-
-      readyState = MockWebSocket.OPEN;
-      onopen: ((event: Event) => void) | null = null;
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: Event) => void) | null = null;
-      onclose: ((event: CloseEvent) => void) | null = null;
-      send = vi.fn();
-      close = vi.fn((code?: number, reason?: string) => {
-        this.readyState = MockWebSocket.CLOSED;
-        this.onclose?.({ code: code ?? 1000, reason: reason ?? 'closed' } as CloseEvent);
-      });
-
-      constructor() {
-        MockWebSocket.instances.push(this);
-      }
-    }
-
     vi.stubGlobal('WebSocket', MockWebSocket);
 
     try {
@@ -275,6 +290,113 @@ describe('createChatClient', () => {
       expect(get(client.state)).toBe('reconnecting');
       client.disconnect();
     } finally {
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('closes the socket when the keepalive window expires', async () => {
+    vi.useFakeTimers();
+    const originalWebSocket = globalThis.WebSocket;
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createChatClient();
+      client.connect('keepalive-token');
+      const socket = MockWebSocket.instances[0];
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u1' } })
+      } as MessageEvent);
+      await vi.advanceTimersByTimeAsync(1);
+
+      vi.setSystemTime(Date.now() + 90_001);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(socket.close).toHaveBeenCalledWith(1000, 'keepalive_timeout');
+      client.disconnect();
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('rejects disconnectAndWait when the socket never closes', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createChatClient();
+      client.connect('disconnect-timeout-token');
+      const socket = MockWebSocket.instances[0];
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u1' } })
+      } as MessageEvent);
+      await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
+
+      socket.close = vi.fn(() => {
+        socket.readyState = MockWebSocket.OPEN;
+      });
+
+      await expect(client.disconnectAndWait(10)).rejects.toThrow(/timed out/);
+      client.disconnect();
+    } finally {
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('rejects disconnectAndWait if close throws', async () => {
+    const originalWebSocket = globalThis.WebSocket;
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createChatClient();
+      client.connect('disconnect-close-throws');
+      const socket = MockWebSocket.instances[0];
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u1' } })
+      } as MessageEvent);
+      await vi.waitFor(() => expect(get(client.state)).toBe('connected'));
+
+      socket.close = vi.fn(() => {
+        throw new Error('close failed');
+      });
+
+      await expect(client.disconnectAndWait(500)).rejects.toBeInstanceOf(Error);
+      client.disconnect();
+    } finally {
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
+  it('schedules a reconnect when a stale socket tries to send', async () => {
+    vi.useFakeTimers();
+    const originalWebSocket = globalThis.WebSocket;
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    try {
+      const client = createChatClient();
+      client.connect('dead-socket-token');
+      const socket = MockWebSocket.instances[0];
+      socket.onopen?.(new Event('open'));
+      socket.onmessage?.({
+        data: JSON.stringify({ event: 'auth_ok', payload: { user_id: 'u1' } })
+      } as MessageEvent);
+      await vi.advanceTimersByTimeAsync(1);
+      socket.readyState = MockWebSocket.CLOSED;
+
+      client.send('ping', {});
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(MockWebSocket.instances).toHaveLength(2);
+      client.disconnect();
+    } finally {
+      vi.useRealTimers();
       vi.stubGlobal('WebSocket', originalWebSocket);
     }
   });
