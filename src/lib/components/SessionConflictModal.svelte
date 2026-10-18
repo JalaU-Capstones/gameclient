@@ -78,20 +78,20 @@
     role="dialog"
     aria-modal="true"
     aria-labelledby="session-conflict-title"
-    class="w-full max-w-md rounded-2xl border border-[var(--neon-magenta)] bg-[var(--bg)] p-6 shadow-[var(--glow-magenta)]"
+    class="w-full max-w-md rounded-2xl border border-neon-magenta bg-bg p-6 shadow-glow-magenta"
   >
-    <h2 id="session-conflict-title" class="text-xl font-semibold text-[var(--text-primary)]">
+    <h2 id="session-conflict-title" class="text-xl font-semibold text-fg">
       Session already active
     </h2>
-    <p class="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+    <p class="mt-4 text-sm leading-6 text-fg-secondary">
       You are signed in here but have an active session in another tab or browser.
     </p>
     {#if isTakingOver}
-      <p class="mt-3 text-sm text-[var(--neon-cyan)]" role="status">
+      <p class="mt-3 text-sm text-neon-cyan" role="status">
         Waiting for the original tab to release ownership…
       </p>
     {:else if isRetrying}
-      <p class="mt-3 text-sm text-[var(--neon-cyan)]" role="status">
+      <p class="mt-3 text-sm text-neon-cyan" role="status">
         Transferring session… Retrying the connection.
       </p>
     {/if}
@@ -105,7 +105,7 @@
         type="button"
         onclick={handleTakeover}
         disabled={isTakingOver || isRetrying}
-        class="rounded-full border border-[var(--neon-magenta)] bg-[var(--neon-magenta)] px-4 py-2 text-sm font-medium text-[var(--bg)] transition disabled:cursor-not-allowed disabled:opacity-70"
+        class="rounded-full border border-neon-magenta bg-neon-magenta px-4 py-2 text-sm font-medium text-bg transition disabled:cursor-not-allowed disabled:opacity-70"
       >
         {isTakingOver || isRetrying ? 'Transferring session…' : 'Continue here'}
       </button>
@@ -113,7 +113,7 @@
         type="button"
         onclick={onDismiss}
         disabled={isTakingOver}
-        class="rounded-full border border-[var(--text-secondary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]"
+        class="rounded-full border border-fg-secondary px-4 py-2 text-sm font-medium text-fg transition hover:border-neon-cyan hover:text-neon-cyan"
       >
         Stay in original tab
       </button>

@@ -4,10 +4,10 @@
   const toastList = $derived($toasts);
 
   const toneClasses: Record<string, string> = {
-    info: 'border-cyan-400/70 bg-[var(--cell)] text-[var(--text-primary)]',
-    success: 'border-emerald-400/70 bg-[var(--cell)] text-[var(--text-primary)]',
-    warning: 'border-amber-400/70 bg-[var(--cell)] text-[var(--text-primary)]',
-    error: 'border-red-400/70 bg-[var(--cell)] text-[var(--text-primary)]'
+    info: 'border-cyan-400/70 bg-cell text-fg',
+    success: 'border-emerald-400/70 bg-cell text-fg',
+    warning: 'border-amber-400/70 bg-cell text-fg',
+    error: 'border-red-400/70 bg-cell text-fg'
   };
 
   const accentClasses: Record<string, string> = {
@@ -34,7 +34,7 @@
   >
     {#each toastList as toast (toast.id)}
       <div
-        class={`relative overflow-hidden rounded-xl border-2 shadow-[var(--glow-cyan)] backdrop-blur-sm ${toneClasses[toast.tone]}`}
+        class={`relative overflow-hidden rounded-xl border-2 shadow-glow-cyan backdrop-blur-sm ${toneClasses[toast.tone]}`}
       >
         <div class="flex items-start gap-3 p-3 pr-10">
           <span class={`mt-1 h-2.5 w-2.5 rounded-full ${dotClasses[toast.tone]}`}></span>

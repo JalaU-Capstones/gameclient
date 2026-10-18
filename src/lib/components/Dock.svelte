@@ -22,7 +22,7 @@
   <nav
     aria-label="Main navigation"
     data-testid="dock"
-    class="fixed bottom-0 left-1/2 z-30 -translate-x-1/2 translate-y-0 rounded-t-2xl border border-b-0 border-[var(--neon-cyan)]/50 bg-[var(--bg)]/95 px-3 py-2 shadow-[var(--glow-cyan)] backdrop-blur transition-transform duration-200 ease-out sm:translate-y-[calc(100%-12px)] sm:hover:translate-y-0 sm:focus-within:translate-y-0"
+    class="fixed bottom-0 left-1/2 z-30 -translate-x-1/2 translate-y-0 rounded-t-2xl border border-b-0 border-neon-cyan/50 bg-bg/95 px-3 py-2 shadow-glow-cyan backdrop-blur transition-transform duration-200 ease-out sm:translate-y-[calc(100%-12px)] sm:hover:translate-y-0 sm:focus-within:translate-y-0"
   >
     <ul class="flex items-center gap-2">
       {#each dockItems as item (item.id)}
@@ -36,13 +36,13 @@
             data-testid={`dock-item-${item.id}`}
             {disabled}
             onclick={() => handleClick(item.path)}
-            class="flex h-12 w-12 items-center justify-center rounded-xl border transition-all duration-150 enabled:hover:scale-125 enabled:focus-visible:scale-125 enabled:active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
-            class:border-[var(--neon-cyan)]={isActive}
+            class="flex h-12 w-12 items-center justify-center rounded-xl border transition-all duration-150 enabled:hover:scale-125 enabled:focus-visible:scale-125 enabled:active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan disabled:cursor-not-allowed disabled:opacity-60"
+            class:border-neon-cyan={isActive}
             class:border-transparent={!isActive}
-            class:bg-[var(--cell)]={isActive}
-            class:shadow-[var(--glow-cyan)]={isActive}
-            class:text-[var(--neon-cyan)]={isActive}
-            class:text-[var(--text-primary)]={!isActive}
+            class:bg-cell={isActive}
+            class:shadow-glow-cyan={isActive}
+            class:text-neon-cyan={isActive}
+            class:text-fg={!isActive}
             class:opacity-70={!isActive}
           >
             {#if item.id === 'lobby'}

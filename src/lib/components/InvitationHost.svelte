@@ -266,7 +266,7 @@
 
 {#if incomingInvite}
   <div
-    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+    class="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
     role="dialog"
     aria-modal="true"
     aria-labelledby="invite-title"
@@ -274,28 +274,23 @@
   >
     <div
       bind:this={dialogElement}
-      class="w-full max-w-md space-y-6 rounded-2xl border-2 border-[var(--neon-magenta)] bg-[var(--cell)] p-8 text-center shadow-[var(--glow-magenta)]"
+      class="w-full max-w-md space-y-6 rounded-2xl border-2 border-neon-magenta bg-cell p-8 text-center shadow-glow-magenta"
     >
-      <h3
-        id="invite-title"
-        class="text-2xl font-bold uppercase tracking-widest text-[var(--neon-magenta)]"
-      >
+      <h3 id="invite-title" class="text-2xl font-bold uppercase tracking-widest text-neon-magenta">
         Challenger Approaching!
       </h3>
-      <p class="text-lg text-[var(--text-secondary)]">
-        <span class="font-bold text-[var(--neon-cyan)]">{incomingInvite.host.name}</span> wants to play.
+      <p class="text-lg text-fg-secondary">
+        <span class="font-bold text-neon-cyan">{incomingInvite.host.name}</span> wants to play.
       </p>
       {#if incomingInvite.promoted}
-        <p class="text-sm text-[var(--text-muted)] italic">
-          This invitation was waiting in the queue.
-        </p>
+        <p class="text-sm text-fg-muted italic">This invitation was waiting in the queue.</p>
       {/if}
       <div class="flex gap-4">
         <button
           type="button"
           disabled={isDisabled || isSubmitting}
           onclick={reject}
-          class="flex-1 rounded-full border border-[var(--text-muted)] px-4 py-3 text-sm uppercase tracking-widest text-[var(--text-muted)] transition hover:bg-[var(--text-muted)] hover:text-[var(--bg)]"
+          class="flex-1 rounded-full border border-fg-muted px-4 py-3 text-sm uppercase tracking-widest text-fg-muted transition hover:bg-fg-muted hover:text-bg"
         >
           Decline
         </button>
@@ -303,7 +298,7 @@
           type="button"
           disabled={isDisabled || isSubmitting}
           onclick={accept}
-          class="flex-1 rounded-full border border-[var(--neon-cyan)] px-4 py-3 text-sm uppercase tracking-widest text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)]"
+          class="flex-1 rounded-full border border-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-neon-cyan shadow-glow-cyan transition hover:bg-neon-cyan hover:text-bg"
         >
           Accept
         </button>

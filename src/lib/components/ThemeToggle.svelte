@@ -17,7 +17,7 @@
   type="button"
   {disabled}
   aria-label={label}
-  class="rounded-full border border-[var(--neon-magenta)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-magenta)] transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 md:text-sm"
+  class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition hover:bg-neon-magenta hover:text-bg active:scale-95 md:text-sm"
   on:click={toggleTheme}
 >
   {isDark ? 'Light' : 'Dark'}

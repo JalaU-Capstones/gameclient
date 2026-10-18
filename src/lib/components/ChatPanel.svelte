@@ -165,15 +165,13 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="fixed bottom-6 right-6 z-50 w-[360px] rounded-2xl border border-[var(--neon-cyan)] bg-[var(--bg)] shadow-[var(--glow-cyan)]"
+  class="fixed bottom-6 right-6 z-50 w-90 rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan"
   role="region"
   aria-label="Chat"
 >
-  <header
-    class="flex items-center justify-between gap-3 border-b border-[var(--neon-cyan)]/50 px-4 py-3"
-  >
+  <header class="flex items-center justify-between gap-3 border-b border-neon-cyan/50 px-4 py-3">
     <div class="flex items-center gap-2">
-      <span class="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--neon-cyan)]">
+      <span class="text-xs font-semibold uppercase tracking-[0.28em] text-neon-cyan">
         Chat · {chatStore.usersCount}
       </span>
     </div>
@@ -196,7 +194,7 @@
         type="button"
         aria-label="Close chat"
         data-testid="chat-close"
-        class="text-xl leading-none text-[var(--text-primary)] transition hover:text-[var(--neon-cyan)]"
+        class="text-xl leading-none text-fg transition hover:text-neon-cyan"
         onclick={handleCloseClick}
       >
         ×
@@ -204,25 +202,25 @@
     </div>
   </header>
 
-  <div class="relative h-[500px]">
+  <div class="relative h-125">
     <div
       bind:this={listEl}
       onscroll={handleScroll}
       role="log"
       aria-live="polite"
-      class="flex h-full max-h-[500px] flex-col gap-3 overflow-y-auto px-3 py-3"
+      class="flex h-full max-h-125 flex-col gap-3 overflow-y-auto px-3 py-3"
     >
       {#each groupedMessages() as group (group.userId + ':' + group.messages[0].id)}
         <div class="flex flex-col gap-2">
           <div
-            class="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--neon-cyan)] opacity-80"
+            class="text-[10px] font-semibold uppercase tracking-[0.24em] text-neon-cyan opacity-80"
           >
             {group.userName} · {formatRelative(group.messages[0].timestamp)}
           </div>
 
           {#each group.messages as message (message.id)}
             <div
-              class="max-w-[82%] rounded-lg bg-[var(--cell)] px-3 py-2 text-sm text-[var(--text-primary)] shadow-sm"
+              class="max-w-[82%] rounded-lg bg-cell px-3 py-2 text-sm text-fg shadow-sm"
               title={new Date(message.timestamp).toLocaleString()}
             >
               {message.content}
@@ -235,7 +233,7 @@
     {#if hasUnreadSinceScroll}
       <button
         type="button"
-        class="absolute bottom-3 right-3 rounded-full border border-[var(--neon-cyan)] bg-[var(--bg)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)]"
+        class="absolute bottom-3 right-3 rounded-full border border-neon-cyan bg-bg px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neon-cyan shadow-glow-cyan"
         onclick={handleUnreadPill}
       >
         New messages ↓
@@ -244,7 +242,7 @@
   </div>
 
   {#if hasErrorArea}
-    <div class="border-t border-[var(--neon-cyan)]/40 px-3 py-2">
+    <div class="border-t border-neon-cyan/40 px-3 py-2">
       <div
         class="flex items-center justify-between gap-2 rounded-md bg-red-500/10 px-2 py-2 text-sm text-red-300"
       >
@@ -270,7 +268,7 @@
     </div>
   {/if}
 
-  <form class="border-t border-[var(--neon-cyan)]/40 p-3" onsubmit={handleSubmit}>
+  <form class="border-t border-neon-cyan/40 p-3" onsubmit={handleSubmit}>
     <div class="flex items-center gap-2">
       <input
         type="text"
@@ -280,22 +278,20 @@
         maxlength={500}
         placeholder="Type a message..."
         disabled={chatStore.status !== 'connected' || rateLimitRemaining > 0}
-        class="h-10 flex-1 rounded-lg border border-[var(--neon-cyan)]/70 bg-[var(--bg)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)] disabled:cursor-not-allowed disabled:opacity-60"
+        class="h-10 flex-1 rounded-lg border border-neon-cyan/70 bg-bg px-3 text-sm text-fg placeholder:text-fg-secondary focus:outline-none focus:ring-2 focus:ring-neon-cyan disabled:cursor-not-allowed disabled:opacity-60"
       />
 
       <button
         type="submit"
         disabled={sendDisabled}
-        class="rounded-lg border border-[var(--neon-cyan)] bg-[var(--neon-cyan)] px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        class="rounded-lg border border-neon-cyan bg-neon-cyan px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-bg transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Send
       </button>
     </div>
 
     {#if inputValue.length > 400}
-      <div
-        class="mt-2 text-right text-[10px] uppercase tracking-[0.2em] text-[var(--text-secondary)]"
-      >
+      <div class="mt-2 text-right text-[10px] uppercase tracking-[0.2em] text-fg-secondary">
         {inputValue.length}/500
       </div>
     {/if}
