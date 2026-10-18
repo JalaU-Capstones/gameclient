@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev build preview start test test-cov lint format check \
+.PHONY: help install dev build preview start build-node build-static preview-static verify-health test test-cov lint format check \
 	docker-build docker-up docker-down docker-logs docker-rebuild docker-verify docker-reset clean
 
 help:
@@ -7,8 +7,12 @@ help:
 	@echo "  make install        Instala dependencias con pnpm"
 	@echo "  make dev            Ejecuta el servidor de desarrollo"
 	@echo "  make build          Compila para producción"
+	@echo "  make build-node     Compila el artefacto del adapter-node (Docker)"
+	@echo "  make build-static   Compila el artefacto del adapter-static (Render Static Site)"
 	@echo "  make preview        Sirve el build de producción (Vite preview)"
+	@echo "  make preview-static Sirve el artefacto estático localmente"
 	@echo "  make start          Sirve el build de producción (adapter-node)"
+	@echo "  make verify-health  Comprueba el endpoint /health del contenedor local"
 	@echo "  make test           Ejecuta tests con Vitest"
 	@echo "  make test-cov       Ejecuta tests con cobertura"
 	@echo "  make lint           Ejecuta Prettier check + ESLint"
@@ -37,6 +41,19 @@ preview:
 
 start:
 	pnpm start
+
+build-node:
+	pnpm build:node
+
+build-static:
+	pnpm build:static
+
+preview-static:
+	pnpm preview:static
+
+verify-health:
+	@echo "--- GET /health on the local container ---"
+	curl -fsS http://127.0.0.1:${APP_PORT:-3000}/health || (echo "Health check failed" && exit 1)
 
 test:
 	pnpm test
