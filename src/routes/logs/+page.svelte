@@ -274,7 +274,12 @@
   <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-neon-cyan">Logs</h2>
 
   <div class="lg:hidden flex flex-col items-center justify-center p-8 text-center text-fg-muted">
-    <svg class="mb-4 h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      class="mb-4 h-12 w-12 text-neon-cyan"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         stroke-linecap="round"
         stroke-linejoin="round"
@@ -282,8 +287,9 @@
         d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
       ></path>
     </svg>
-    <p class="text-sm font-bold uppercase tracking-widest">Desktop only</p>
-    <p class="mt-2 text-sm">Logs are only available on desktop screens.</p>
+    <p class="text-sm font-bold uppercase tracking-widest text-neon-cyan">
+      Logs are only available on desktop screens.
+    </p>
   </div>
 
   <div class="hidden lg:block">
@@ -376,7 +382,7 @@
         </div>
       {:else if activeTab === 'overview'}
         <div class="space-y-6">
-          <div class="grid gap-4 grid-cols-2 md:grid-cols-5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StatCard label="Total" value={stats.total} accent="cyan" testId="stat-total" />
             <StatCard
               label="Warnings"
