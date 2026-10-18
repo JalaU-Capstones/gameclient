@@ -96,14 +96,23 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run --detach --name gameclient-ci --publish 3000:3000 gameclient:ci
+          docker run --detach --name gameclient-ci \
+            -e ORIGIN=https://ci.example.com \
+            --publish 127.0.0.1:3000:3000 \
+            gameclient:ci
+
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --output /dev/null http://localhost:3000/; then
+            if curl --fail --silent --output /dev/null http://127.0.0.1:3000/; then
+              echo "Application root is reachable."
+              curl --fail --silent --output /dev/null http://127.0.0.1:3000/health \
+                && echo "Health endpoint is reachable."
               docker rm --force gameclient-ci
               exit 0
             fi
             sleep 2
           done
+
+          echo "Application never became reachable. Container logs:"
           docker logs gameclient-ci
           docker rm --force gameclient-ci
           exit 1
