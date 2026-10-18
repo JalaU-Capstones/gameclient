@@ -70,21 +70,27 @@
   });
 </script>
 
-<section class="space-y-10 py-8 mx-auto max-w-4xl relative">
-  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-neon-cyan mb-12">Lobby</h2>
+<section class="relative mx-auto max-w-4xl space-y-10 px-4 py-8 sm:px-6">
+  <h2
+    class="mb-12 text-center text-3xl uppercase tracking-[0.25em] text-neon-cyan sm:text-4xl md:text-5xl"
+  >
+    Lobby
+  </h2>
 
   {#if error}
     <div
-      class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center"
+      class="rounded-xl border border-red-500 bg-red-500/10 p-4 text-center text-sm font-bold text-red-500 break-words sm:text-base"
     >
       {error}
     </div>
   {/if}
 
-  <OnlinePlayersMenu
-    title="Online Players"
-    disabled={$standbyMode || waitingForAccept}
-    emptyMessage="Waiting for challengers..."
-    onInvite={(user) => handleInvite(user.id)}
-  />
+  <div class="mx-auto w-full max-w-md">
+    <OnlinePlayersMenu
+      title="Online Players"
+      disabled={$standbyMode || waitingForAccept}
+      emptyMessage="Waiting for challengers..."
+      onInvite={(user) => handleInvite(user.id)}
+    />
+  </div>
 </section>
