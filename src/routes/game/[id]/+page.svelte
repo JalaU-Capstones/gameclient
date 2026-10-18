@@ -587,23 +587,25 @@
 <section class="max-w-2xl mx-auto space-y-8 animate-fade-in relative">
   {#if error}
     <div
-      class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center absolute -top-15 left-0 right-0 z-10"
+      class="absolute -top-15 left-0 right-0 z-10 rounded-xl border border-red-500 bg-red-500/10 p-4 text-center text-sm font-bold text-red-500 break-words sm:text-base"
     >
       {error}
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="flex items-center justify-center h-64 text-neon-cyan">
-      <div class="animate-pulse tracking-[0.25em] uppercase text-xl">Loading Game...</div>
+    <div class="flex h-64 items-center justify-center text-neon-cyan">
+      <div class="animate-pulse text-xl uppercase tracking-[0.25em]">Loading Game...</div>
     </div>
   {:else}
-    <h2 class="text-2xl uppercase tracking-[0.25em] text-neon-cyan">Game</h2>
+    <h2 class="text-3xl uppercase tracking-[0.25em] text-neon-cyan sm:text-4xl md:text-5xl">
+      Game
+    </h2>
     <div
-      class="flex justify-between items-center bg-cell p-6 rounded-2xl border-2 border-fg-muted shadow-xl"
+      class="flex flex-col items-center justify-between gap-3 rounded-2xl border-2 border-fg-muted bg-cell p-6 shadow-xl sm:flex-row sm:gap-6"
     >
-      <div class="text-center flex-1">
-        <div class="text-xs uppercase tracking-widest text-fg-muted mb-2">Host (X)</div>
+      <div class="flex-1 text-center sm:text-left">
+        <div class="mb-2 text-xs uppercase tracking-widest text-fg-muted">Host (X)</div>
         <div
           class="text-xl font-bold"
           class:text-neon-magenta={hostUser?.id === turn}
@@ -613,10 +615,10 @@
         </div>
       </div>
 
-      <div class="text-3xl font-black text-fg-muted px-8 opacity-50">VS</div>
+      <div class="my-2 text-xl font-black text-fg-muted opacity-50 sm:my-0 sm:text-2xl">VS</div>
 
-      <div class="text-center flex-1">
-        <div class="text-xs uppercase tracking-widest text-fg-muted mb-2">Guest (O)</div>
+      <div class="flex-1 text-center sm:text-right">
+        <div class="mb-2 text-xs uppercase tracking-widest text-fg-muted">Guest (O)</div>
         <div
           class="text-xl font-bold"
           class:text-neon-cyan={guestUser?.id === turn}
@@ -631,25 +633,25 @@
       {#if isGameOver}
         {#if isDraw}
           <div
-            class="text-3xl font-black text-amber-400 animate-pulse tracking-widest text-glow-amber"
+            class="text-2xl font-black tracking-widest text-amber-400 animate-pulse text-glow-amber sm:text-4xl"
           >
             DRAW
           </div>
         {:else if winner === $currentUser?.id}
           <div
-            class="text-3xl font-black text-green-400 animate-bounce tracking-widest text-glow-green"
+            class="text-2xl font-black tracking-widest text-green-400 animate-bounce text-glow-green sm:text-4xl"
           >
             YOU WON!
           </div>
         {:else}
-          <div class="text-3xl font-black text-red-400 tracking-widest text-glow-red">YOU LOST</div>
+          <div class="text-2xl font-black tracking-widest text-red-400 text-glow-red sm:text-4xl">
+            YOU LOST
+          </div>
         {/if}
-        <div class="text-sm text-fg-muted mt-2 uppercase tracking-widest">
-          Reason: {endReason}
-        </div>
+        <div class="mt-2 text-sm uppercase tracking-widest text-fg-muted">Reason: {endReason}</div>
       {:else}
         <div
-          class="text-xl tracking-[0.25em] uppercase transition-all duration-300 font-black"
+          class="px-4 text-center text-lg font-black uppercase tracking-widest break-words transition-all duration-300 sm:text-2xl"
           class:text-neon-cyan={canPlay}
           class:text-glow-cyan={canPlay}
           class:text-fg={!canPlay}
@@ -660,63 +662,65 @@
       {/if}
     </div>
 
-    <div class="flex justify-center relative">
-      <div
-        class="grid grid-cols-3 grid-rows-3 gap-3 bg-fg-muted/10 p-3 rounded-2xl w-[min(90vw,400px)] aspect-square shadow-2xl relative"
-      >
-        {#each board as row, rIndex (rIndex)}
-          {#each row as cell, cIndex (cIndex)}
-            <button
-              class="w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300
-                {cell === 0 && canPlay
-                ? 'hover:border-neon-cyan hover:border-2 cursor-pointer bg-cell shadow-lg'
-                : ''}
-                {cell === 0 && !canPlay ? 'cursor-default bg-cell shadow-lg' : ''}
-              "
-              class:cell-symbol={cell !== 0}
-              class:cell-x={cell === 1}
-              class:cell-o={cell === 2}
-              onclick={() => playMove(rIndex, cIndex)}
-              disabled={$standbyMode || !canPlay || cell !== 0}
-              aria-label="Cell {rIndex} {cIndex}"
-            >
-              {#if cell === 1}
-                X
-              {:else if cell === 2}
-                O
-              {/if}
-            </button>
+    <div class="relative flex justify-center">
+      <div class="mx-auto w-full max-w-[min(90vw,28rem)] px-2">
+        <div
+          class="relative grid aspect-square w-[min(90vw,400px)] grid-cols-3 grid-rows-3 gap-2 rounded-2xl bg-fg-muted/10 p-3 shadow-2xl sm:gap-3"
+        >
+          {#each board as row, rIndex (rIndex)}
+            {#each row as cell, cIndex (cIndex)}
+              <button
+                class="flex aspect-square w-full items-center justify-center rounded-2xl text-4xl transition-all duration-300 sm:text-6xl
+                  {cell === 0 && canPlay
+                  ? 'cursor-pointer bg-cell shadow-lg hover:border-2 hover:border-neon-cyan'
+                  : ''}
+                  {cell === 0 && !canPlay ? 'cursor-default bg-cell shadow-lg' : ''}
+                "
+                class:cell-symbol={cell !== 0}
+                class:cell-x={cell === 1}
+                class:cell-o={cell === 2}
+                onclick={() => playMove(rIndex, cIndex)}
+                disabled={$standbyMode || !canPlay || cell !== 0}
+                aria-label="Cell {rIndex} {cIndex}"
+              >
+                {#if cell === 1}
+                  X
+                {:else if cell === 2}
+                  O
+                {/if}
+              </button>
+            {/each}
           {/each}
-        {/each}
 
-        {#if lineCoords}
-          <svg class="absolute inset-0 w-full h-full pointer-events-none z-10 drop-shadow-2xl">
-            <line
-              x1="{lineCoords.x1}%"
-              y1="{lineCoords.y1}%"
-              x2="{lineCoords.x2}%"
-              y2="{lineCoords.y2}%"
-              stroke={winner === hostUser?.id ? 'var(--neon-magenta)' : 'var(--neon-cyan)'}
-              stroke-width="14"
-              stroke-linecap="round"
-              stroke-opacity="0.6"
-              class="animate-draw-line"
-            />
-          </svg>
-        {/if}
+          {#if lineCoords}
+            <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full drop-shadow-2xl">
+              <line
+                x1="{lineCoords.x1}%"
+                y1="{lineCoords.y1}%"
+                x2="{lineCoords.x2}%"
+                y2="{lineCoords.y2}%"
+                stroke={winner === hostUser?.id ? 'var(--neon-magenta)' : 'var(--neon-cyan)'}
+                stroke-width="14"
+                stroke-linecap="round"
+                stroke-opacity="0.6"
+                class="animate-draw-line"
+              />
+            </svg>
+          {/if}
+        </div>
       </div>
     </div>
 
     {#if isGameOver}
-      <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 animate-fade-in">
+      <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row animate-fade-in">
         <button
-          class="w-full sm:w-auto px-8 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl hover:bg-neon-cyan hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-glow-cyan flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+          class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-neon-cyan bg-cell px-8 py-3 font-bold uppercase tracking-widest text-neon-cyan shadow-glow-cyan transition-all duration-200 hover:bg-neon-cyan hover:text-black active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           onclick={handlePlayAgain}
           disabled={waitingForRematch || $standbyMode}
         >
           {#if waitingForRematch}
             <span
-              class="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2"
+              class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
             ></span>
             Waiting for Opponent...
           {:else}
@@ -725,7 +729,7 @@
         </button>
 
         <button
-          class="w-full sm:w-auto px-8 py-3 bg-cell border-2 border-neon-magenta text-neon-magenta rounded-xl hover:bg-neon-magenta hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-glow-magenta cursor-pointer active:scale-95"
+          class="w-full rounded-xl border-2 border-neon-magenta bg-cell px-8 py-3 font-bold uppercase tracking-widest text-neon-magenta shadow-glow-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-black active:scale-95 sm:w-auto"
           disabled={$standbyMode}
           onclick={goLobby}
         >
@@ -736,7 +740,7 @@
       <div class="mt-8 space-y-4">
         {#if showRetryButton}
           <div class="rounded-2xl border border-neon-magenta bg-cell p-4 shadow-glow-magenta">
-            <p class="text-sm text-fg-secondary mb-3">
+            <p class="mb-3 text-sm text-fg-secondary">
               The invitation ended as <span class="font-bold uppercase">{invitationState}</span>.
               {#if isHost}
                 You can retry with the same guest.
@@ -749,7 +753,7 @@
                   disabled={$standbyMode || retryInFlight}
                   onclick={handleRetry}
                   label="Retry in"
-                  class="w-full px-6 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="w-full rounded-xl border-2 border-neon-cyan bg-cell px-6 py-3 font-bold uppercase tracking-widest text-neon-cyan transition disabled:cursor-not-allowed disabled:opacity-50"
                 />
               {/key}
             {:else}
@@ -757,13 +761,13 @@
                 type="button"
                 disabled={$standbyMode || retryInFlight}
                 onclick={handleRetry}
-                class="w-full px-6 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl hover:bg-neon-cyan hover:text-black font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full rounded-xl border-2 border-neon-cyan bg-cell px-6 py-3 font-bold uppercase tracking-widest text-neon-cyan transition hover:bg-neon-cyan hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {retryInFlight ? 'Retrying…' : 'Retry'}
               </button>
             {/if}
             {#if retryRemainingAttempts !== undefined}
-              <p class="text-xs uppercase tracking-widest text-fg-muted mt-2">
+              <p class="mt-2 text-xs uppercase tracking-widest text-fg-muted">
                 {retryRemainingAttempts === 0
                   ? 'No retries left'
                   : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}
@@ -773,14 +777,16 @@
         {/if}
 
         {#if isWaiting}
-          <div class="rounded-2xl border border-neon-magenta bg-cell p-4 shadow-glow-magenta">
+          <div
+            class="mx-auto w-full max-w-md rounded-2xl border border-neon-magenta bg-cell p-4 text-center shadow-glow-magenta"
+          >
             <div class="flex items-center justify-between gap-4">
               <div>
                 <p class="text-xs uppercase tracking-[0.25em] text-fg-muted">Invite</p>
-                <p class="text-lg font-bold text-neon-magenta">Invitation pending</p>
+                <p class="text-lg font-bold text-neon-magenta break-words">Invitation pending</p>
               </div>
               <button
-                class="px-4 py-2 rounded-xl border border-neon-magenta text-neon-magenta font-bold uppercase tracking-widest hover:bg-neon-magenta hover:text-black transition"
+                class="rounded-xl border border-neon-magenta px-4 py-2 font-bold uppercase tracking-widest text-neon-magenta transition hover:bg-neon-magenta hover:text-black"
                 disabled={$standbyMode}
                 onclick={handleCancelInvitation}
               >
@@ -788,7 +794,7 @@
               </button>
             </div>
             {#if isWaiting && retryRemainingAttempts !== undefined}
-              <p class="text-xs uppercase tracking-widest text-fg-muted mt-2">
+              <p class="mt-2 text-xs uppercase tracking-widest text-fg-muted">
                 {retryRemainingAttempts === 0
                   ? 'No retries left'
                   : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}
@@ -798,11 +804,13 @@
         {/if}
 
         {#if isWaiting || invitationState === 'rejected' || invitationState === 'expired' || invitationState === 'canceled'}
-          <OnlinePlayersMenu
-            title={isWaiting ? 'Waiting for opponent — Online players' : 'Challenge a player'}
-            disabled={$standbyMode || isWaiting}
-            onInvite={(user) => handleInviteOnlinePlayer(user.id)}
-          />
+          <div class="mx-auto w-full max-w-md">
+            <OnlinePlayersMenu
+              title={isWaiting ? 'Waiting for opponent — Online players' : 'Challenge a player'}
+              disabled={$standbyMode || isWaiting}
+              onInvite={(user) => handleInviteOnlinePlayer(user.id)}
+            />
+          </div>
         {/if}
       </div>
     {/if}
