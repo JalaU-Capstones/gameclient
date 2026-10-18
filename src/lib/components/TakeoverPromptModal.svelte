@@ -42,13 +42,16 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="takeover-title"
-      class="w-full max-w-md rounded-2xl border border-neon-cyan bg-bg p-6 shadow-glow-cyan"
+      class="w-full max-w-[calc(100vw-2rem)] rounded-2xl border border-neon-cyan bg-bg p-4 shadow-glow-cyan sm:max-w-md sm:p-6"
       inert={isSubmitting}
     >
-      <h2 id="takeover-title" class="text-2xl font-bold uppercase tracking-widest text-neon-cyan">
+      <h2
+        id="takeover-title"
+        class="break-words text-2xl font-bold uppercase tracking-widest text-neon-cyan sm:text-3xl"
+      >
         Another session is active
       </h2>
-      <p class="mt-4 text-base text-fg">
+      <p class="mt-4 break-words text-base text-fg">
         Another session is active in another tab or browser. If you continue here, that session will
         be closed.
       </p>
@@ -62,7 +65,7 @@
         </div>
       {/if}
 
-      <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <div class="mt-6 flex w-full flex-col gap-3 sm:flex-row sm:justify-end">
         {#if retryAfterSeconds !== undefined && retryAfterSeconds > 0}
           <CountdownButton
             seconds={retryAfterSeconds}
@@ -70,7 +73,7 @@
             onclick={onConfirm}
             label="Retry in"
             dataTestId="takeover-confirm"
-            class="flex-1 rounded-full border border-neon-cyan bg-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-bg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            class="w-full rounded-full border border-neon-cyan bg-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-bg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
           />
         {:else}
           <button
@@ -79,7 +82,7 @@
             disabled={isSubmitting}
             onclick={onConfirm}
             data-testid="takeover-confirm"
-            class="flex-1 rounded-full border border-neon-cyan bg-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-bg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            class="w-full rounded-full border border-neon-cyan bg-neon-cyan px-4 py-3 text-sm uppercase tracking-widest text-bg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-1"
           >
             Continue here
           </button>
@@ -90,7 +93,7 @@
           disabled={isSubmitting}
           onclick={onCancel}
           data-testid="takeover-cancel"
-          class="rounded-full border border-fg-muted bg-transparent px-4 py-3 text-sm uppercase tracking-widest text-fg-muted transition hover:border-fg hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded-full border border-fg-muted bg-transparent px-4 py-3 text-sm uppercase tracking-widest text-fg-muted transition hover:border-fg hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           Cancel
         </button>
