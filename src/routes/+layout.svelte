@@ -1063,7 +1063,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-neon-magenta px-6 py-2 text-sm uppercase tracking-widest text-neon-magenta shadow-glow-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60 sm:text-sm"
           data-testid="back-button"
         >
           <span class="inline-flex items-center gap-2">
@@ -1084,7 +1084,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-neon-magenta px-6 py-2 text-sm uppercase tracking-widest text-neon-magenta shadow-glow-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60 sm:text-sm"
           data-testid="lobby-button"
         >
           {isLeavingGame ? 'Leaving...' : 'Go to lobby'}
