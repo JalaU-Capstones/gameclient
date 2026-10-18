@@ -82,7 +82,7 @@
   }
 </script>
 
-<div class="flex h-40 w-full flex-col sm:h-56">
+<div class="flex h-40 sm:h-56 w-full flex-col">
   {#if hasData}
     <svg
       role="img"

@@ -20,7 +20,7 @@
   }
 </script>
 
-<div class="flex h-40 w-full flex-col sm:h-56">
+<div class="flex h-40 sm:h-56 w-full flex-col">
   {#if hasData}
     <ul class="space-y-2" role="img" aria-label={ariaLabel} data-testid="hbar-chart">
       {#each items as item (item.label)}
