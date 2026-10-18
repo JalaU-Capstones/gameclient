@@ -69,7 +69,7 @@
 
     {#if showXTicks}
       <div
-        class="grid text-[10px] uppercase tracking-widest text-[var(--text-muted)]"
+        class="grid text-[10px] uppercase tracking-widest text-fg-muted"
         style={`grid-template-columns: repeat(${columns.length}, minmax(0, 1fr));`}
       >
         {#each columns as column, columnIndex (columnIndex)}

@@ -14,13 +14,13 @@ describe('StatCard', () => {
   it('uses the neutral accent by default', () => {
     render(StatCard, { props: { label: 'Warnings', value: 3 } });
 
-    expect(screen.getByText('3')).toHaveClass('text-[var(--text-primary)]');
+    expect(screen.getByText('3')).toHaveClass('text-fg');
   });
 
   it('applies the cyan accent class when set', () => {
     render(StatCard, { props: { label: 'Errors', value: 2, accent: 'cyan' } });
 
-    expect(screen.getByText('2')).toHaveClass('text-[var(--neon-cyan)]');
+    expect(screen.getByText('2')).toHaveClass('text-neon-cyan');
   });
 
   it('uses a custom test id when provided and accepts numeric values', () => {
