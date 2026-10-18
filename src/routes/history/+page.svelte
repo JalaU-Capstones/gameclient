@@ -68,6 +68,32 @@
     return (rivalId && names[rivalId] && sanitizeDisplayName(names[rivalId])) || 'Unknown player';
   }
 
+  function mobileOutcomeLabel(game: GameplayRecord): string {
+    const outcome = getOutcome(game, myId);
+    switch (outcome) {
+      case 'won':
+        return 'Victory';
+      case 'lost':
+        return 'Defeat';
+      case 'draw':
+        return 'Draw';
+      case 'in_progress':
+        return 'Ongoing';
+      case 'pending':
+        return 'Pending';
+      case 'rejected':
+        return 'Rejected';
+      case 'expired':
+        return 'Expired';
+      case 'canceled':
+        return 'Canceled';
+      case 'busy':
+        return 'Busy';
+      default:
+        return outcomeLabel[outcome];
+    }
+  }
+
   async function loadGames() {
     isLoading = true;
     error = '';
@@ -202,57 +228,78 @@
         No games played yet.
       </p>
     {:else}
-      <ul class="space-y-4">
-        {#each gamesList as game (game.id)}
-          <li
-            class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 bg-bg border border-neon-cyan/30 rounded-lg hover:border-neon-cyan transition"
-          >
-            <div class="min-w-0">
-              <p class="text-xl font-mono truncate">{rivalName(game)}</p>
-              <p class="text-sm text-fg-muted">{formatDate(game.createdDate)}</p>
-            </div>
-            <div class="flex flex-col items-start gap-2 md:items-end">
-              <span
-                class="self-start md:self-auto px-6 py-2 uppercase tracking-widest text-sm rounded-full border whitespace-nowrap {outcomeClasses[
-                  getOutcome(game, myId)
-                ]}"
-              >
-                {outcomeLabel[getOutcome(game, myId)]}
-              </span>
-              {#if game.hostPlayer === myId && (getOutcome(game, myId) === 'rejected' || getOutcome(game, myId) === 'expired' || getOutcome(game, myId) === 'canceled')}
-                {@const retryState = retryStates.get(game.id)}
-                {#if retryState?.retryAfter !== undefined && retryState.retryAfter > 0}
-                  {#key retryState.key}
-                    <CountdownButton
-                      seconds={retryState.retryAfter}
-                      disabled={retryState.inFlight || $standbyMode}
+      <div class="hidden md:block">
+        <ul class="space-y-4">
+          {#each gamesList as game (game.id)}
+            <li
+              class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 bg-bg border border-neon-cyan/30 rounded-lg hover:border-neon-cyan transition"
+            >
+              <div class="min-w-0">
+                <p class="text-xl font-mono truncate">{rivalName(game)}</p>
+                <p class="text-sm text-fg-muted">{formatDate(game.createdDate)}</p>
+              </div>
+              <div class="flex flex-col items-start gap-2 md:items-end">
+                <span
+                  class="self-start md:self-auto px-6 py-2 uppercase tracking-widest text-sm rounded-full border whitespace-nowrap {outcomeClasses[
+                    getOutcome(game, myId)
+                  ]}"
+                >
+                  {outcomeLabel[getOutcome(game, myId)]}
+                </span>
+                {#if game.hostPlayer === myId && (getOutcome(game, myId) === 'rejected' || getOutcome(game, myId) === 'expired' || getOutcome(game, myId) === 'canceled')}
+                  {@const retryState = retryStates.get(game.id)}
+                  {#if retryState?.retryAfter !== undefined && retryState.retryAfter > 0}
+                    {#key retryState.key}
+                      <CountdownButton
+                        seconds={retryState.retryAfter}
+                        disabled={retryState.inFlight || $standbyMode}
+                        onclick={() => handleRetry(game)}
+                        label="Retry in"
+                        class="self-start md:self-auto px-4 py-2 rounded-full border border-neon-cyan text-neon-cyan uppercase tracking-widest text-sm transition hover:bg-neon-cyan hover:text-bg disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    {/key}
+                  {:else}
+                    <button
+                      type="button"
+                      disabled={retryState?.inFlight || $standbyMode}
                       onclick={() => handleRetry(game)}
-                      label="Retry in"
                       class="self-start md:self-auto px-4 py-2 rounded-full border border-neon-cyan text-neon-cyan uppercase tracking-widest text-sm transition hover:bg-neon-cyan hover:text-bg disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                  {/key}
-                {:else}
-                  <button
-                    type="button"
-                    disabled={retryState?.inFlight || $standbyMode}
-                    onclick={() => handleRetry(game)}
-                    class="self-start md:self-auto px-4 py-2 rounded-full border border-neon-cyan text-neon-cyan uppercase tracking-widest text-sm transition hover:bg-neon-cyan hover:text-bg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {retryState?.inFlight ? 'Retrying…' : 'Retry'}
-                  </button>
+                    >
+                      {retryState?.inFlight ? 'Retrying…' : 'Retry'}
+                    </button>
+                  {/if}
+                  {#if retryState?.remaining !== undefined}
+                    <span class="text-xs uppercase tracking-widest text-fg-muted">
+                      {retryState.remaining === 0
+                        ? 'No retries left'
+                        : `${retryState.remaining} remaining`}
+                    </span>
+                  {/if}
                 {/if}
-                {#if retryState?.remaining !== undefined}
-                  <span class="text-xs uppercase tracking-widest text-fg-muted">
-                    {retryState.remaining === 0
-                      ? 'No retries left'
-                      : `${retryState.remaining} remaining`}
-                  </span>
-                {/if}
-              {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </div>
+
+      <div class="md:hidden flex flex-col gap-3">
+        {#each gamesList as game (game.id)}
+          <div class="flex flex-col gap-2 rounded-xl border border-neon-cyan/40 bg-cell p-4">
+            <div class="flex justify-between text-sm">
+              <span class="text-fg-muted">Opponent</span>
+              <span class="font-bold text-fg">{rivalName(game)}</span>
             </div>
-          </li>
+            <div class="flex justify-between text-sm">
+              <span class="text-fg-muted">Status</span>
+              <span class="font-bold text-fg">{mobileOutcomeLabel(game)}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-fg-muted">Date</span>
+              <span class="font-bold text-fg">{formatDate(game.createdDate)}</span>
+            </div>
+          </div>
         {/each}
-      </ul>
+      </div>
     {/if}
   </div>
 </section>
