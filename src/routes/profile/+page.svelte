@@ -160,7 +160,7 @@
     {/if}
   </div>
 
-  <form onsubmit={handleUpdate} class="mx-auto w-full max-w-md space-y-10 px-4 sm:px-0">
+  <form onsubmit={handleUpdate} class="max-w-md mx-auto w-full px-4 sm:px-0 space-y-10">
     <div class="space-y-4">
       <p class="font-bold text-fg text-xl md:text-3xl text-left">Your name</p>
       <input
