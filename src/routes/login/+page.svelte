@@ -103,8 +103,7 @@
           const retryAfterHeader = err.headers?.get('Retry-After');
           const parsed = Number(retryAfterHeader);
           takeoverRetryAfter = Number.isFinite(parsed) && parsed > 0 ? parsed : 60;
-          takeoverError =
-            'Demasiados intentos de takeover. Espera unos segundos antes de reintentar.';
+          takeoverError = 'Too many takeover attempts. Please wait a few seconds and try again.';
           return;
         }
 
@@ -113,21 +112,20 @@
           (err.status === 409 && err.message.includes('game'))
         ) {
           takeoverError =
-            'Hay una partida activa en la otra sesión. Espera a que termine y vuelve a intentar.';
+            'There is an active game in the other session. Wait for it to finish and try again.';
           return;
         }
 
         if (err.code === 'SESSION_REQUIRED') {
-          takeoverError =
-            'La sesión actual no es válida para el takeover. Vuelve a iniciar sesión.';
+          takeoverError = 'The current session is not valid for takeover. Please log in again.';
           return;
         }
 
-        takeoverError = userFacingMessage(err.code, 'No se pudo completar el takeover.');
+        takeoverError = userFacingMessage(err.code, 'Could not complete the takeover.');
         return;
       }
 
-      takeoverError = 'No se pudo completar el takeover. Revisa tu conexión.';
+      takeoverError = 'Could not complete the takeover. Check your connection.';
     } finally {
       isTakingOver = false;
     }
@@ -143,7 +141,7 @@
       clearBootstrapSessionCache();
       pendingTakeover = null;
       isCancelling = false;
-      pushToast('info', 'Inicio de sesión cancelado. La otra sesión sigue activa.');
+      pushToast('info', 'Login cancelled. The other session is still active.');
     }
   }
 
