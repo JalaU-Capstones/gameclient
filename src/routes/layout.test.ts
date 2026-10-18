@@ -308,6 +308,11 @@ vi.mock('$lib/components/Dock.svelte', async () => {
   return { default: module.default };
 });
 
+vi.mock('$lib/components/HeaderMenu.svelte', async () => {
+  const module = await import('../tests/harnesses/HeaderMenuProbe.svelte');
+  return { default: module.default };
+});
+
 describe('ChatHost visibility', () => {
   beforeEach(() => {
     currentPath = '/lobby';
@@ -1348,5 +1353,74 @@ describe('layout auth guard', () => {
     expect(mocks.goto).not.toHaveBeenCalledWith('/lobby');
     expect(clearSpy).not.toHaveBeenCalled();
     expect(screen.getByTestId('logout-button')).toBeInTheDocument();
+  });
+});
+
+describe('Header layout', () => {
+  beforeEach(() => {
+    currentPath = '/lobby';
+    currentSearch = '';
+    mocks.subscribers.length = 0;
+    mocks.afterNavigateCallbacks.length = 0;
+    navigationHistory.reset();
+    session.reset();
+  });
+
+  it('renders the HeaderMenu component in the header', () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    expect(screen.getByTestId('header-menu')).toBeInTheDocument();
+  });
+
+  it('renders the desktop actions with their existing test ids', () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    navigationHistory.reset();
+    navigationHistory.record('/lobby');
+    navigationHistory.record('/history');
+    currentPath = '/game/abc-123';
+    publishPage();
+
+    const backRender = render(Layout, { props: { children: stubChild } });
+
+    expect(screen.getByTestId('back-button')).toBeInTheDocument();
+    expect(screen.getByTestId('logout-button')).toBeInTheDocument();
+
+    backRender.unmount();
+
+    navigationHistory.reset();
+    currentPath = '/history';
+    publishPage();
+    const lobbyRender = render(Layout, { props: { children: stubChild } });
+
+    expect(screen.getByTestId('lobby-button')).toBeInTheDocument();
+    lobbyRender.unmount();
+  });
+
+  it('keeps the Welcome line hidden on mobile while present in the DOM', () => {
+    session.setUser({
+      id: '1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      registerDate: '2026-01-01T00:00:00Z'
+    });
+
+    render(Layout, { props: { children: stubChild } });
+
+    const welcome = screen.getByText(/Welcome, Ada/i);
+    expect(welcome).toHaveClass('hidden');
+    expect(welcome).toHaveClass('sm:inline');
   });
 });
