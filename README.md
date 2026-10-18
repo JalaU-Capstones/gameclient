@@ -158,6 +158,10 @@ panel (`ChatPanel`) with the latest messages, the connected users count, and
 a single-line input. It is mounted once in the root layout and is only
 visible on `/lobby`, `/game/[id]`, and `/history`.
 
+Note: the bubble sits at `bottom-24` on mobile so it stays clear of the dock,
+then returns to `bottom-6` on larger screens where the dock only peeks at the
+bottom edge.
+
 ### Opening and closing
 
 - **Open**: click the bubble. `chatStore.open()` resolves the access token
