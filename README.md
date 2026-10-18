@@ -1,8 +1,11 @@
 # GameClient
 
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions)](https://github.com/features/actions)
-[![Coverage](https://img.shields.io/badge/Coverage-Codecov-00B2A9?logo=codecov)](https://codecov.io/)
-[![Deploy](https://img.shields.io/badge/Deploy-Render-46E3B7?logo=render)](https://render.com/)
+[![CI](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/JalaU-Capstones/gameclient/branch/main/graph/badge.svg)](https://codecov.io/gh/JalaU-Capstones/gameclient)
+[![Production](https://img.shields.io/website?url=https%3A%2F%2Fgameclient-2msz.onrender.com%2Fhealth&label=production)](https://gameclient-2msz.onrender.com/health)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+The production badge checks `/health` on every render. On the Render free tier the service sleeps after inactivity, so the badge may briefly show "down" during a cold start.
 
 Frontend SvelteKit for the game. This client wraps HTTP and WebSocket access to the FastAPI backend so UI screens only consume API modules and stores instead of directly dealing with fetch or socket logic.
 
@@ -109,9 +112,9 @@ route is destroyed. The waiting-room **Cancel** action also sends `leave_game`
 before navigating to `/lobby`. The route cleanup retains the shared gameplay
 socket; it unsubscribes page handlers and releases page-owned state.
 
-## Online players e invitaciones
+## Online players and invitations
 
-El estado compartido de jugadores conectados vive en `src/lib/stores/onlinePlayers.svelte.ts`. Es un store global, basado en el cliente de presencia, y se inicializa una sola vez desde el layout. El resto de las pantallas usa ese estado para listarse y para detectar quién está jugando, sin volver a subscribirse a `online_users` o `user_status`.
+The shared connected-player state lives in `src/lib/stores/onlinePlayers.svelte.ts`. It is a global store built on top of the presence client and is initialized once from the layout. The rest of the screens use that state to list themselves and detect who is playing, without re-subscribing to `online_users` or `user_status`.
 
 ```ts
 import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
@@ -120,14 +123,14 @@ onlinePlayers.initialize();
 onlinePlayers.refresh();
 ```
 
-`OnlinePlayersMenu` es un componente reutilizable para mostrar la lista de usuarios activos y ofrecer invitaciones. Acepta props tipadas:
+`OnlinePlayersMenu` is a reusable component for showing the list of active users and offering invitations. It accepts typed props:
 
-- `title?: string` — encabezado visible del panel.
-- `disabled?: boolean` — deshabilita todos los botones de invitación.
-- `emptyMessage?: string` — mensaje cuando no hay jugadores disponibles.
-- `onInvite?: (user: PublicUser) => void` — callback opcional para invitar.
+- `title?: string` — visible panel heading.
+- `disabled?: boolean` — disables all invitation buttons.
+- `emptyMessage?: string` — message shown when no players are available.
+- `onInvite?: (user: PublicUser) => void` — optional callback to invite the user.
 
-No renderiza al usuario actual y nunca expone UUIDs en la UI. Cuando `onInvite` no se pasa, el menú funciona en modo solo lectura.
+It does not render the current user and never exposes UUIDs in the UI. When `onInvite` is not passed, the menu works in read-only mode.
 
 `InvitationHost` centralizes the invitation modal. It mounts once in the layout
 and subscribes to the global gameplay-client store, rebinding its event handlers
@@ -176,7 +179,8 @@ bottom edge.
 Messages live in an in-memory buffer capped at 200 messages or 2 hours,
 whichever is hit first. The backend does not persist history: on every
 (re)connect, the client receives a `chat_history` frame with the recent
-messages and **replaces** the local buffer (server is the source of truth).
+messages and **replaces** the local buffer.
+
 On a Render cold start, the server-side buffer is empty and the client
 starts with no history.
 
@@ -203,6 +207,165 @@ disables the input and shows a countdown based on `retry_after_seconds`.
 No new variables. The endpoint is derived from `PUBLIC_WS_BASE` via
 `buildWsUrl('/api/v2/ws/chat')`, same as the gameplay and presence sockets.
 
+## Docker
+
+The client includes a multi-stage `Dockerfile` and a `docker-compose.yml` file
+for local development and testing. The container serves the built SPA with
+`adapter-node` on port `3000`.
+
+### Start the stack
+
+```bash
+make docker-up       # or: docker compose up --build -d
+```
+
+Once it is running, open <http://localhost:3000>.
+
+### Build args vs runtime env vars
+
+The `PUBLIC_*` variables from SvelteKit are inlined into the bundle during the
+build, not read at runtime. That is why they are passed as `build.args` in
+`docker-compose.yml` instead of as `environment:`. If they were only defined in
+`environment:`, the SPA would be built with empty values and requests would go to
+its own container (404).
+
+Build variables:
+
+- `PUBLIC_API_BASE` — base URL for the HTTP backend.
+- `PUBLIC_WS_BASE` — base URL for the WebSocket backend.
+- `PUBLIC_REQUEST_TIMEOUT_MS` — HTTP timeout in milliseconds.
+
+Runtime variables (read by `adapter-node`):
+
+- `PORT` — listen port.
+- `HOST` — listen host.
+- `ORIGIN` — public origin for the server (for absolute URLs and redirects).
+
+**Any change to the build variables requires rebuilding the image**, not just
+restarting the container:
+
+```bash
+docker compose build --no-cache frontend
+docker compose up -d
+```
+
+### Communication with the backend
+
+There is no Vite proxy inside the container. The SPA needs absolute URLs to talk
+to the backend. These are configured with two Docker-specific variables:
+
+| Variable                 | Default                 | Description                    |
+| ------------------------ | ----------------------- | ------------------------------ |
+| `DOCKER_PUBLIC_API_BASE` | `http://localhost:8080` | HTTP base URL for the backend  |
+| `DOCKER_PUBLIC_WS_BASE`  | `http://localhost:8080` | WebSocket base URL for backend |
+
+These are **never** read from `PUBLIC_API_BASE`/`PUBLIC_WS_BASE` because those
+values are meant for the `pnpm dev` mode, where the Vite proxy resolves them.
+
+### Point the container at a deployed backend
+
+```bash
+DOCKER_PUBLIC_API_BASE=https://gameapi-9vos.onrender.com \
+DOCKER_PUBLIC_WS_BASE=https://gameapi-9vos.onrender.com \
+docker compose up --build
+```
+
+### Point the container at a backend on the host
+
+When the backend runs on your machine (for example with `make dev` in the
+`gameapi` repository) and the frontend runs in Docker, the container needs an
+address to reach the host.
+
+The `docker-compose.yml` already includes:
+
+```yaml
+extra_hosts:
+  - 'host.docker.internal:host-gateway'
+```
+
+This makes `host.docker.internal` work the same way on Linux, macOS, and Windows
+without extra configuration.
+
+Configure the `.env` file:
+
+```text
+DOCKER_PUBLIC_API_BASE=http://localhost:8080
+DOCKER_PUBLIC_WS_BASE=http://localhost:8080
+```
+
+The browser makes the SPA requests. If the browser and backend run on the same
+machine, it should use `localhost`; the `host.docker.internal` alias in
+`extra_hosts` only resolves inside Docker containers and not in the host browser.
+
+The `host.docker.internal:host-gateway` entry lets the container verify that it can
+reach a backend listening on a host interface. To confirm it, rebuild and run
+`make docker-verify`:
+
+```bash
+make docker-rebuild
+make docker-verify
+```
+
+### CORS on the backend
+
+When the frontend runs at `http://localhost:3000` and calls the backend at
+`http://localhost:8080`, the request is **cross-origin**. The backend must allow
+that origin with credentials:
+
+```text
+# In the backend .env
+CORS_ORIGINS=http://localhost:3000
+```
+
+If the backend runs with `CORS_ORIGINS=*` and `allow_credentials=True`, the
+browser will **reject** the response for security reasons. This is a rule of the
+CORS standard: wildcard and credentials cannot be combined.
+
+### Troubleshooting
+
+**Error 404 in `/api/v2/auth/*` from the browser:**
+
+The container is serving the SPA but cannot find the API routes. Confirm that the
+build args and configured URL are present:
+
+```bash
+# 1. Confirm that Compose resolved the build args
+docker compose config | grep -A4 "args:"
+
+# 2. Confirm that the URL is in the built bundle
+docker compose exec frontend sh -c \
+  'grep -roE "host\.docker\.internal:8080|localhost:8080" build/ | head -3'
+
+# 3. Confirm that the container can reach the backend on the host
+docker compose exec frontend sh -c \
+  'wget -qO- http://host.docker.internal:8080/health || echo FAIL'
+```
+
+The first output should show the resolved base URLs. The second should show at
+least one match with the configured URL. The third should return `{"status":"ok"}`.
+
+**CORS error in the browser:**
+
+The backend is not allowing the frontend origin. Check:
+
+```bash
+curl -i -X OPTIONS http://localhost:8080/api/v2/auth/login \
+  -H "Origin: http://localhost:3000" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+It should return `Access-Control-Allow-Origin: http://localhost:3000` and
+`Access-Control-Allow-Credentials: true`.
+
+**Cookies are not being sent to the backend:**
+
+JWTs travel in `HttpOnly` cookies. With `SameSite=Lax`, the browser sends them in
+cross-origin requests **as long as both hosts share the same registrable domain**.
+`localhost:3000` and `localhost:8080` do, so the cookies work in local
+development. In production, if the frontend and backend are on different domains,
+configure `SameSite=None; Secure` in the backend and use HTTPS.
+
 ## WebSocket reconnection and session replacement
 
 - When a new socket connects for the same session, the previous socket closes
@@ -215,173 +378,7 @@ No new variables. The endpoint is derived from `PUBLIC_WS_BASE` via
   page uses the retry timestamp to ignore older expiry events, preventing a
   delayed event from changing a retried invitation back to `expired`.
 
-## Docker
-
-El cliente incluye un `Dockerfile` multi-stage y un `docker-compose.yml`
-para desarrollo local y pruebas. El contenedor sirve el SPA construido
-con `adapter-node` en el puerto `3000`.
-
-### Levantar el stack
-
-```bash
-make docker-up       # o: docker compose up --build -d
-```
-
-Una vez arriba, abre <http://localhost:3000>.
-
-### Build args vs runtime env vars
-
-Las variables `PUBLIC_*` de SvelteKit se inline-an en el bundle **durante
-el build**, no se leen en runtime. Por eso se pasan como `build.args` en
-`docker-compose.yml` y no como `environment:`. Si solo se definieran en
-`environment:`, el SPA se compilaría con valores vacíos y las peticiones
-saldrían hacia el propio contenedor (404).
-
-Variables de build:
-
-- `PUBLIC_API_BASE` — Base URL del backend HTTP.
-- `PUBLIC_WS_BASE` — Base URL del WebSocket.
-- `PUBLIC_REQUEST_TIMEOUT_MS` — Timeout HTTP en milisegundos.
-
-Variables de runtime (leídas por `adapter-node`):
-
-- `PORT` — Puerto de escucha.
-- `HOST` — Host de escucha.
-- `ORIGIN` — Origen público del servidor (para URLs absolutas y
-  redirects).
-
-**Cualquier cambio en las variables de build requiere reconstruir la
-imagen**, no solo reiniciar el contenedor:
-
-```bash
-docker compose build --no-cache frontend
-docker compose up -d
-```
-
-### Comunicación con el backend
-
-Dentro del contenedor **no existe el proxy de Vite**. El SPA necesita
-URLs absolutas para hablar con el backend. Se configuran mediante dos
-variables específicas de Docker:
-
-| Variable                 | Default                 | Descripción                    |
-| ------------------------ | ----------------------- | ------------------------------ |
-| `DOCKER_PUBLIC_API_BASE` | `http://localhost:8080` | Base URL HTTP del backend      |
-| `DOCKER_PUBLIC_WS_BASE`  | `http://localhost:8080` | Base URL WebSocket del backend |
-
-**Nunca** se leen desde `PUBLIC_API_BASE`/`PUBLIC_WS_BASE` porque esos
-valores están pensados para el modo `pnpm dev` (donde el proxy de Vite
-los resuelve).
-
-### Apuntar el contenedor a un backend desplegado
-
-```bash
-DOCKER_PUBLIC_API_BASE=https://gameapi-9vos.onrender.com \
-DOCKER_PUBLIC_WS_BASE=https://gameapi-9vos.onrender.com \
-docker compose up --build
-```
-
-### Apuntar el contenedor a un backend en el host
-
-Cuando el backend corre en tu máquina (por ejemplo con `make dev` en el
-repositorio `gameapi`) y el frontend corre en Docker, el contenedor
-necesita una dirección para alcanzar el host.
-
-El `docker-compose.yml` ya incluye:
-
-```yaml
-extra_hosts:
-  - 'host.docker.internal:host-gateway'
-```
-
-Esto hace que `host.docker.internal` funcione igual en Linux, macOS y
-Windows sin configuración adicional.
-
-Configura el `.env`:
-
-```
-DOCKER_PUBLIC_API_BASE=http://localhost:8080
-DOCKER_PUBLIC_WS_BASE=http://localhost:8080
-```
-
-El navegador es quien realiza las llamadas del SPA. Si el navegador y el
-backend están en la misma máquina, debe usar `localhost`; el alias
-`host.docker.internal` de `extra_hosts` solo se resuelve dentro de los
-contenedores Docker y no en el navegador del host.
-
-La entrada `host.docker.internal:host-gateway` permite verificar desde
-el contenedor que se alcanza un backend que escucha en una interfaz del
-host. Para comprobarlo, reconstruye y ejecuta `make docker-verify`:
-
-```bash
-make docker-rebuild
-make docker-verify
-```
-
-### CORS en el backend
-
-Cuando el frontend corre en `http://localhost:3000` y llama al backend en
-`http://localhost:8080`, la petición es **cross-origin**. El backend debe
-permitir ese origen con credenciales:
-
-```
-# En el .env del backend
-CORS_ORIGINS=http://localhost:3000
-```
-
-Si el backend corre con `CORS_ORIGINS=*` y `allow_credentials=True`, el
-navegador **rechazará** las respuestas por seguridad. Es una regla del
-estándar CORS: no se puede combinar wildcard con credenciales.
-
-### Troubleshooting
-
-**Error 404 en `/api/v2/auth/*` desde el navegador:**
-
-El contenedor está sirviendo el SPA pero no encuentra las rutas de la
-API. Confirma que los build args y la URL configurada estén presentes:
-
-```bash
-# 1. Confirmar que Compose resolvió los build args
-docker compose config | grep -A4 "args:"
-
-# 2. Confirmar que la URL está en el bundle construido
-docker compose exec frontend sh -c \
-  'grep -roE "host\.docker\.internal:8080|localhost:8080" build/ | head -3'
-
-# 3. Confirmar que el contenedor puede alcanzar el backend en el host
-docker compose exec frontend sh -c \
-  'wget -qO- http://host.docker.internal:8080/health || echo FAIL'
-```
-
-La primera salida debe mostrar las bases URL resueltas. La segunda debe
-mostrar al menos una coincidencia con la URL configurada. La tercera
-debe devolver `{"status":"ok"}`.
-
-**Error CORS en el navegador:**
-
-El backend no está permitiendo el origen del frontend. Verifica:
-
-```bash
-curl -i -X OPTIONS http://localhost:8080/api/v2/auth/login \
-  -H "Origin: http://localhost:3000" \
-  -H "Access-Control-Request-Method: POST" \
-  -H "Access-Control-Request-Headers: content-type"
-```
-
-Debe devolver `Access-Control-Allow-Origin: http://localhost:3000` y
-`Access-Control-Allow-Credentials: true`.
-
-**Las cookies no se envían al backend:**
-
-Los JWT viajan en cookies `HttpOnly`. Con `SameSite=Lax`, el navegador
-las envía en peticiones cross-origin **siempre que ambos hosts
-compartan el mismo dominio registrable**. `localhost:3000` y
-`localhost:8080` lo comparten, por lo que las cookies funcionan en
-local. En producción, si frontend y backend están en dominios
-distintos, hay que configurar `SameSite=None; Secure` en el backend y
-usar HTTPS.
-
-## Estructura del proyecto
+## Project structure
 
 ```text
 .github/
@@ -427,18 +424,18 @@ src/
 └── app.d.ts
 ```
 
-## Cliente HTTP y WebSocket
+## HTTP and WebSocket client
 
-La capa de cliente se compone por capas pequeñas y reutilizables:
+The client layer is made of small, reusable building blocks:
 
-- `config`: lee `PUBLIC_*` y construye URLs para HTTP/WS.
-- `api/client`: wrapper HTTP con timeout, parseo de JSON, manejo de `204` y errores tipados.
-- `api/errors`: `ApiError`, `NetworkError` y `TimeoutError`.
-- `api/health`: ejemplo concreto de endpoint de salud.
-- `api/ws`: cliente WebSocket con handshake de autenticación, reconexión y ping/pong.
-- `stores/session`: estado mínimo del usuario autenticado.
+- `config`: reads `PUBLIC_*` values and builds URLs for HTTP/WS.
+- `api/client`: HTTP wrapper with timeout, JSON parsing, `204` handling, and typed errors.
+- `api/errors`: `ApiError`, `NetworkError`, and `TimeoutError`.
+- `api/health`: concrete example of a health endpoint.
+- `api/ws`: WebSocket client with authentication handshake, reconnection, and ping/pong.
+- `stores/session`: minimal state for the authenticated user.
 
-### Uso HTTP
+### HTTP usage
 
 ```ts
 import type { PublicUser } from '$lib/types/api';
@@ -447,9 +444,9 @@ import { httpClient } from '$lib/api/client';
 const user = await httpClient.get<PublicUser>('/api/v2/users/USER_ID');
 ```
 
-Los endpoints de listado de usuarios responden `410 Gone` por privacidad.
+User listing endpoints answer with `410 Gone` for privacy.
 
-### Uso de endpoint concreto
+### Endpoint-specific usage
 
 ```ts
 import { healthApi } from '$lib/api/health';
@@ -457,7 +454,7 @@ import { healthApi } from '$lib/api/health';
 const status = await healthApi.check();
 ```
 
-### Manejo de errores
+### Error handling
 
 ```ts
 import { ApiError } from '$lib/api/errors';
@@ -466,12 +463,12 @@ try {
   await httpClient.get('/api/v1/profile');
 } catch (err) {
   if (err instanceof ApiError && err.isUnauthorized) {
-    // redirect o limpieza de sesión
+    // redirect or session cleanup
   }
 }
 ```
 
-### Uso WebSocket
+### WebSocket usage
 
 ```ts
 import { createGameplaysClient } from '$lib/api/ws';
@@ -483,53 +480,62 @@ client.on('game_message', (payload) => {
   console.log('message', payload);
 });
 
-// cuando la pantalla termina:
+// when the screen ends:
 client.disconnect();
 ```
 
-### Variables de entorno
+### Environment variables
 
-| Variable                    | Descripción                                                                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `PUBLIC_API_BASE`           | Base para llamadas HTTP. En desarrollo se deja vacía para usar el proxy de Vite.                 |
-| `PUBLIC_WS_BASE`            | Base para WebSockets. En desarrollo se puede dejar vacía para derivarse desde `window.location`. |
-| `PUBLIC_REQUEST_TIMEOUT_MS` | Timeout global de cada request HTTP, por defecto `15000`.                                        |
+| Variable                    | Description                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `PUBLIC_API_BASE`           | Base for HTTP calls. In development it is left empty to use the Vite proxy.                  |
+| `PUBLIC_WS_BASE`            | Base for WebSockets. In development it may be left empty and derived from `window.location`. |
+| `PUBLIC_REQUEST_TIMEOUT_MS` | Global timeout for each HTTP request, default `15000`.                                       |
 
-### Variables de entorno y CI
+### Environment variables in CI
 
-`src/lib/config.ts` lee las variables `PUBLIC_*` de manera defensiva: si
-una variable no está definida, se usa un valor por defecto. Esto evita que
-`svelte-check` falle en CI cuando no existe `.env`.
+`src/lib/config.ts` reads the `PUBLIC_*` variables defensively: if a variable is not
+set, it falls back to a default. This prevents `svelte-check` from failing in CI when
+`.env` is absent.
 
-Aun así, los pipelines de GitHub Actions y GitLab CI declaran valores
-placeholder en sus bloques `env:` y `variables:` para que `svelte-kit sync`
-genere los tipos correctamente. Los valores reales se inyectan en el bundle
-durante `pnpm build` (en Docker, mediante `build.args`).
+Even so, the GitHub Actions and GitLab CI pipelines declare placeholder values in
+their `env:` and `variables:` blocks so `svelte-kit sync` can generate the types
+correctly. The real values are injected into the bundle during `pnpm build` (in
+Docker, through `build.args`).
 
-### Pruebas
+### Networking tests
 
-La capa de networking se valida con:
+The networking layer is validated with:
 
-- `msw` para mocks de HTTP.
-- `vitest-websocket-mock` para pruebas del cliente WebSocket.
+- `msw` for HTTP mocks.
+- `vitest-websocket-mock` for WebSocket client tests.
 
-### Reglas para los compañeros de UI
+### Guidelines for UI contributors
 
-- Importa siempre módulos de endpoint (`healthApi`, `usersApi`, ...) en lugar de hacer `fetch` directo.
-- Lee el estado de autenticación desde `$session` y `$isAuthenticated`; no duplicar el estado del usuario en componentes.
-- Nunca muestres `email` ni `registerDate` de usuarios distintos al usuario actual; usa el tipo `PublicUser` para esas consultas.
-- Instancia clientes WebSocket por pantalla y llama a `disconnect()` en `onDestroy` cuando la vista deje de usarse.
+- Always import endpoint modules (`healthApi`, `usersApi`, ...) instead of calling `fetch` directly.
+- Read authentication state from `$session` and `$isAuthenticated`; do not duplicate user state in components.
+- Never display `email` or `registerDate` for users other than the current one; use the `PublicUser` type for those queries.
+- Instantiate WebSocket clients per screen and call `disconnect()` in `onDestroy` when the view is no longer used.
 
-## Tests
+## Quality
+
+### Tests
+
+The HTTP/WebSocket client suite uses real mocks and the current coverage floor is 70%.
+
+The networking layer is validated with:
+
+- `msw` for HTTP mocks.
+- `vitest-websocket-mock` for WebSocket client tests.
+
+The minimum coverage floor is 70% to guard against regressions in the client layer.
 
 ```bash
 pnpm test
 pnpm test:cov
 ```
 
-The HTTP/WebSocket client suite uses real mocks and the current coverage threshold is 70%.
-
-## Lint and quality
+### Lint and format
 
 ```bash
 pnpm lint
@@ -537,7 +543,7 @@ pnpm check
 pnpm format
 ```
 
-## CI and release pipeline
+### CI and release pipeline
 
 | Stage               | Purpose                                            | Trigger              |
 | ------------------- | -------------------------------------------------- | -------------------- |
@@ -567,13 +573,9 @@ Optional environment variables:
 
 The interface uses a dark arcade-inspired aesthetic with neon accents. Visual components stay intentionally minimal so the business logic and backend validation remain the stable core of the experience.
 
-### Resources and credits
+## Resources and credits
 
 The arcade sounds, typeface, and favicon are documented in [`CREDITS.md`](./CREDITS.md), with their respective licenses (CC0, SIL OFL, MIT).
-
-## Continuous integration
-
-The project uses Vitest and SvelteKit to validate quality on every change. The minimum coverage floor is 70% to guard against regressions in the client layer.
 
 ## License
 
