@@ -1126,15 +1126,17 @@
   <ToastHost />
   <InvitationHost disabled={isStandby || sessionConflict} />
   <ChatHost visible={chatVisible} disabled={isStandby || sessionConflict} />
-  <Dock
-    visible={!isPublicRoute}
-    currentPath={$page.url.pathname}
-    onNavigate={handleDockNavigate}
-    disabled={isStandby || sessionConflict}
-  />
+  <div class={chatStore.isOpen ? 'hidden sm:block' : 'block'}>
+    <Dock
+      visible={!isPublicRoute}
+      currentPath={$page.url.pathname}
+      onNavigate={handleDockNavigate}
+      disabled={isStandby || sessionConflict}
+    />
+  </div>
   <main
     bind:this={mainElement}
-    class="mx-auto max-w-6xl px-4 pb-10 sm:px-6"
+    class="mx-auto max-w-6xl px-4 pb-32 sm:px-6 sm:pb-10"
     inert={isStandby || sessionConflict}
   >
     {#if authError}
