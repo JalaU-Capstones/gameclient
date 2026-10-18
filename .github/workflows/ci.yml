@@ -70,6 +70,14 @@ jobs:
       - name: Run tests with coverage
         run: pnpm test:cov
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Build
         run: pnpm build
 
@@ -116,3 +124,15 @@ jobs:
           docker logs gameclient-ci
           docker rm --force gameclient-ci
           exit 1
+
+  verify-production:
+    name: Production verification
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, test, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Render health
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://gameclient.onrender.com' }}
+        run: |
+          curl --fail --silent --show-error "$PRODUCTION_URL/health"
