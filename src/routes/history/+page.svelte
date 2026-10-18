@@ -46,15 +46,15 @@
   };
 
   const outcomeClasses: Record<Outcome, string> = {
-    won: 'border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)]',
-    lost: 'border-[var(--neon-magenta)] text-[var(--neon-magenta)]',
-    draw: 'border-[var(--neon-yellow)] text-[var(--neon-yellow)] shadow-[var(--glow-yellow)]',
-    in_progress: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    pending: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    rejected: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    expired: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    canceled: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    busy: 'border-[var(--text-muted)] text-[var(--text-muted)]'
+    won: 'border-neon-cyan text-neon-cyan shadow-glow-cyan',
+    lost: 'border-neon-magenta text-neon-magenta',
+    draw: 'border-neon-yellow text-neon-yellow shadow-glow-yellow',
+    in_progress: 'border-fg-muted text-fg-muted',
+    pending: 'border-fg-muted text-fg-muted',
+    rejected: 'border-fg-muted text-fg-muted',
+    expired: 'border-fg-muted text-fg-muted',
+    canceled: 'border-fg-muted text-fg-muted',
+    busy: 'border-fg-muted text-fg-muted'
   };
 
   function formatDate(iso: string): string {
@@ -182,17 +182,15 @@
 </script>
 
 <section class="space-y-10 py-8 mx-auto max-w-4xl">
-  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-[var(--neon-cyan)]">History</h2>
+  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-neon-cyan">History</h2>
 
-  <div
-    class="bg-[var(--cell)] rounded-xl border border-[var(--neon-cyan)] p-6 shadow-[var(--glow-cyan)]"
-  >
-    <div class="mb-6 border-b border-[var(--neon-cyan)] pb-2">
-      <h3 class="text-2xl font-bold text-[var(--text-primary)]">Your games</h3>
+  <div class="bg-cell rounded-xl border border-neon-cyan p-6 shadow-glow-cyan">
+    <div class="mb-6 border-b border-neon-cyan pb-2">
+      <h3 class="text-2xl font-bold text-fg">Your games</h3>
     </div>
 
     {#if isLoading}
-      <p class="text-[var(--text-muted)] text-center py-8 text-xl">Loading games...</p>
+      <p class="text-fg-muted text-center py-8 text-xl">Loading games...</p>
     {:else if error}
       <div
         class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center"
@@ -200,18 +198,18 @@
         {error}
       </div>
     {:else if gamesList.length === 0}
-      <p class="font-(family-name:--font-title) text-[var(--text-muted)] text-center py-8">
+      <p class="font-(family-name:--font-title) text-fg-muted text-center py-8">
         No games played yet.
       </p>
     {:else}
       <ul class="space-y-4">
         {#each gamesList as game (game.id)}
           <li
-            class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 bg-[var(--bg)] border border-[var(--neon-cyan)]/30 rounded-lg hover:border-[var(--neon-cyan)] transition"
+            class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 bg-bg border border-neon-cyan/30 rounded-lg hover:border-neon-cyan transition"
           >
             <div class="min-w-0">
               <p class="text-xl font-mono truncate">{rivalName(game)}</p>
-              <p class="text-sm text-[var(--text-muted)]">{formatDate(game.createdDate)}</p>
+              <p class="text-sm text-fg-muted">{formatDate(game.createdDate)}</p>
             </div>
             <div class="flex flex-col items-start gap-2 md:items-end">
               <span
@@ -230,7 +228,7 @@
                       disabled={retryState.inFlight || $standbyMode}
                       onclick={() => handleRetry(game)}
                       label="Retry in"
-                      class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      class="self-start md:self-auto px-4 py-2 rounded-full border border-neon-cyan text-neon-cyan uppercase tracking-widest text-sm transition hover:bg-neon-cyan hover:text-bg disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   {/key}
                 {:else}
@@ -238,13 +236,13 @@
                     type="button"
                     disabled={retryState?.inFlight || $standbyMode}
                     onclick={() => handleRetry(game)}
-                    class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="self-start md:self-auto px-4 py-2 rounded-full border border-neon-cyan text-neon-cyan uppercase tracking-widest text-sm transition hover:bg-neon-cyan hover:text-bg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {retryState?.inFlight ? 'Retrying…' : 'Retry'}
                   </button>
                 {/if}
                 {#if retryState?.remaining !== undefined}
-                  <span class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+                  <span class="text-xs uppercase tracking-widest text-fg-muted">
                     {retryState.remaining === 0
                       ? 'No retries left'
                       : `${retryState.remaining} remaining`}

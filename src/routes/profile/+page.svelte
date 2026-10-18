@@ -152,9 +152,9 @@
   class="space-y-14 py-8 px-6 text-center mx-auto max-w-lg min-h-[70vh] flex flex-col justify-center"
 >
   <div class="space-y-3">
-    <h2 class="text-4xl uppercase tracking-[0.25em] text-[var(--neon-cyan)]">Profile</h2>
+    <h2 class="text-4xl uppercase tracking-[0.25em] text-neon-cyan">Profile</h2>
     {#if memberSince}
-      <p class="text-sm uppercase tracking-widest text-[var(--text-muted)]">
+      <p class="text-sm uppercase tracking-widest text-fg-muted">
         Member since {memberSince}
       </p>
     {/if}
@@ -162,7 +162,7 @@
 
   <form onsubmit={handleUpdate} class="space-y-10">
     <div class="space-y-4">
-      <p class="font-bold text-[var(--text-primary)] text-xl md:text-3xl text-left">Your name</p>
+      <p class="font-bold text-fg text-xl md:text-3xl text-left">Your name</p>
       <input
         bind:value={inputName}
         type="text"
@@ -171,24 +171,24 @@
         minlength="1"
         maxlength="100"
         required
-        class="w-full rounded-xl border border-[var(--neon-cyan)] bg-[var(--cell)] px-4 py-5 text-2xl! transition focus:outline-none focus:shadow-[var(--glow-cyan)]"
+        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-2xl! transition focus:outline-none focus:shadow-glow-cyan"
       />
     </div>
 
     <div class="space-y-4">
-      <p class="font-bold text-[var(--text-primary)] text-xl md:text-3xl text-left">Your email</p>
+      <p class="font-bold text-fg text-xl md:text-3xl text-left">Your email</p>
       <input
         bind:value={inputEmail}
         type="email"
         placeholder="Email"
         autocomplete="email"
         required
-        class="w-full rounded-xl border border-[var(--neon-cyan)] bg-[var(--cell)] px-4 py-5 text-2xl! transition focus:outline-none focus:shadow-[var(--glow-cyan)]"
+        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-2xl! transition focus:outline-none focus:shadow-glow-cyan"
       />
     </div>
 
     <div class="space-y-4">
-      <p class="font-bold text-[var(--text-primary)] text-xl md:text-3xl text-left">New password</p>
+      <p class="font-bold text-fg text-xl md:text-3xl text-left">New password</p>
       <div class="relative">
         <input
           bind:value={inputPassword}
@@ -197,12 +197,12 @@
           autocomplete="new-password"
           minlength="8"
           maxlength="128"
-          class="w-full rounded-xl border border-[var(--neon-cyan)] bg-[var(--cell)] pl-4 pr-24 py-5 text-2xl! transition focus:outline-none focus:shadow-[var(--glow-cyan)]"
+          class="w-full rounded-xl border border-neon-cyan bg-cell pl-4 pr-24 py-5 text-2xl! transition focus:outline-none focus:shadow-glow-cyan"
         />
         <button
           type="button"
           onclick={handleToggleVisibility}
-          class="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-sm! uppercase tracking-widest text-[var(--neon-cyan)] transition hover:text-[var(--neon-magenta)]"
+          class="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-sm! uppercase tracking-widest text-neon-cyan transition hover:text-neon-magenta"
         >
           {visible ? 'HIDE' : 'SHOW'}
         </button>
@@ -213,13 +213,13 @@
       <p class="text-red-500">{error}</p>
     {/if}
     {#if success}
-      <p class="text-[var(--neon-cyan)]">{success}</p>
+      <p class="text-neon-cyan">{success}</p>
     {/if}
 
     <button
       type="submit"
       disabled={submitting || !hasChanges}
-      class="w-full rounded-full border border-[var(--neon-magenta)] px-4 py-4 md:py-5 uppercase tracking-widest text-[var(--neon-magenta)] text-2xl! md:text-4xl! transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+      class="w-full rounded-full border border-neon-magenta px-4 py-4 md:py-5 uppercase tracking-widest text-neon-magenta text-2xl! md:text-4xl! transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {submitting ? 'Updating…' : 'Update account'}
     </button>
@@ -233,7 +233,7 @@
       <button
         type="button"
         onclick={handleAskDelete}
-        class="w-full rounded-full border border-red-500 px-4 py-4 md:py-5 uppercase tracking-widest text-red-500 text-2xl! md:text-4xl! transition hover:bg-red-500 hover:text-[var(--bg)] active:scale-95"
+        class="w-full rounded-full border border-red-500 px-4 py-4 md:py-5 uppercase tracking-widest text-red-500 text-2xl! md:text-4xl! transition hover:bg-red-500 hover:text-bg active:scale-95"
       >
         Delete account
       </button>
@@ -245,7 +245,7 @@
         <button
           type="button"
           onclick={handleCancelDelete}
-          class="w-full rounded-full border border-[var(--neon-cyan)] px-4 py-4 uppercase tracking-widest text-[var(--neon-cyan)] text-xl! transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] active:scale-95"
+          class="w-full rounded-full border border-neon-cyan px-4 py-4 uppercase tracking-widest text-neon-cyan text-xl! transition hover:bg-neon-cyan hover:text-bg active:scale-95"
         >
           Cancel
         </button>
@@ -253,7 +253,7 @@
           type="button"
           onclick={handleConfirmDelete}
           disabled={deleting}
-          class="w-full rounded-full border border-red-500 px-4 py-4 uppercase tracking-widest text-red-500 text-xl! transition hover:bg-red-500 hover:text-[var(--bg)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+          class="w-full rounded-full border border-red-500 px-4 py-4 uppercase tracking-widest text-red-500 text-xl! transition hover:bg-red-500 hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {deleting ? 'Deleting…' : 'Yes, delete it'}
         </button>

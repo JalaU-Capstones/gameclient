@@ -4,6 +4,6 @@
 
 {#if !$isHydrated}
   <div class="flex min-h-[60vh] items-center justify-center">
-    <p class="text-sm uppercase tracking-widest text-[var(--text-muted)]">Loading…</p>
+    <p class="text-sm uppercase tracking-widest text-fg-muted">Loading…</p>
   </div>
 {/if}

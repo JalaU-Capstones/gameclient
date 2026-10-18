@@ -587,39 +587,39 @@
 <section class="max-w-2xl mx-auto space-y-8 animate-fade-in relative">
   {#if error}
     <div
-      class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center absolute top-[-60px] left-0 right-0 z-10"
+      class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center absolute -top-15 left-0 right-0 z-10"
     >
       {error}
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="flex items-center justify-center h-64 text-[var(--neon-cyan)]">
+    <div class="flex items-center justify-center h-64 text-neon-cyan">
       <div class="animate-pulse tracking-[0.25em] uppercase text-xl">Loading Game...</div>
     </div>
   {:else}
-    <h2 class="text-2xl uppercase tracking-[0.25em] text-[var(--neon-cyan)]">Game</h2>
+    <h2 class="text-2xl uppercase tracking-[0.25em] text-neon-cyan">Game</h2>
     <div
-      class="flex justify-between items-center bg-[var(--cell)] p-6 rounded-2xl border-2 border-[var(--border-color)] shadow-xl"
+      class="flex justify-between items-center bg-cell p-6 rounded-2xl border-2 border-fg-muted shadow-xl"
     >
       <div class="text-center flex-1">
-        <div class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-2">Host (X)</div>
+        <div class="text-xs uppercase tracking-widest text-fg-muted mb-2">Host (X)</div>
         <div
           class="text-xl font-bold"
-          class:text-[var(--neon-magenta)]={hostUser?.id === turn}
+          class:text-neon-magenta={hostUser?.id === turn}
           class:text-glow-magenta={hostUser?.id === turn}
         >
           {hostUser ? sanitizeDisplayName(hostUser.name) || 'Unknown' : 'Unknown'}
         </div>
       </div>
 
-      <div class="text-3xl font-black text-[var(--text-muted)] px-8 opacity-50">VS</div>
+      <div class="text-3xl font-black text-fg-muted px-8 opacity-50">VS</div>
 
       <div class="text-center flex-1">
-        <div class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-2">Guest (O)</div>
+        <div class="text-xs uppercase tracking-widest text-fg-muted mb-2">Guest (O)</div>
         <div
           class="text-xl font-bold"
-          class:text-[var(--neon-cyan)]={guestUser?.id === turn}
+          class:text-neon-cyan={guestUser?.id === turn}
           class:text-glow-cyan={guestUser?.id === turn}
         >
           {guestUser ? sanitizeDisplayName(guestUser.name) || 'Unknown' : 'Unknown'}
@@ -644,15 +644,15 @@
         {:else}
           <div class="text-3xl font-black text-red-400 tracking-widest text-glow-red">YOU LOST</div>
         {/if}
-        <div class="text-sm text-[var(--text-muted)] mt-2 uppercase tracking-widest">
+        <div class="text-sm text-fg-muted mt-2 uppercase tracking-widest">
           Reason: {endReason}
         </div>
       {:else}
         <div
           class="text-xl tracking-[0.25em] uppercase transition-all duration-300 font-black"
-          class:text-[var(--neon-cyan)]={canPlay}
+          class:text-neon-cyan={canPlay}
           class:text-glow-cyan={canPlay}
-          class:text-[var(--text-primary)]={!canPlay}
+          class:text-fg={!canPlay}
           class:opacity-75={!canPlay}
         >
           {canPlay ? 'Your Turn' : "Opponent's Turn"}
@@ -662,16 +662,16 @@
 
     <div class="flex justify-center relative">
       <div
-        class="grid grid-cols-3 grid-rows-3 gap-3 bg-[var(--text-muted)]/10 p-3 rounded-2xl w-[min(90vw,400px)] aspect-square shadow-2xl relative"
+        class="grid grid-cols-3 grid-rows-3 gap-3 bg-fg-muted/10 p-3 rounded-2xl w-[min(90vw,400px)] aspect-square shadow-2xl relative"
       >
         {#each board as row, rIndex (rIndex)}
           {#each row as cell, cIndex (cIndex)}
             <button
               class="w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300
                 {cell === 0 && canPlay
-                ? 'hover:border-[var(--neon-cyan)] hover:border-2 cursor-pointer bg-[var(--cell)] shadow-lg'
+                ? 'hover:border-neon-cyan hover:border-2 cursor-pointer bg-cell shadow-lg'
                 : ''}
-                {cell === 0 && !canPlay ? 'cursor-default bg-[var(--cell)] shadow-lg' : ''}
+                {cell === 0 && !canPlay ? 'cursor-default bg-cell shadow-lg' : ''}
               "
               class:cell-symbol={cell !== 0}
               class:cell-x={cell === 1}
@@ -710,7 +710,7 @@
     {#if isGameOver}
       <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 animate-fade-in">
         <button
-          class="w-full sm:w-auto px-8 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl hover:bg-[var(--neon-cyan)] hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-[var(--glow-cyan)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+          class="w-full sm:w-auto px-8 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl hover:bg-neon-cyan hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-glow-cyan flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
           onclick={handlePlayAgain}
           disabled={waitingForRematch || $standbyMode}
         >
@@ -725,7 +725,7 @@
         </button>
 
         <button
-          class="w-full sm:w-auto px-8 py-3 bg-[var(--cell)] border-2 border-[var(--neon-magenta)] text-[var(--neon-magenta)] rounded-xl hover:bg-[var(--neon-magenta)] hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-[var(--glow-magenta)] cursor-pointer active:scale-95"
+          class="w-full sm:w-auto px-8 py-3 bg-cell border-2 border-neon-magenta text-neon-magenta rounded-xl hover:bg-neon-magenta hover:text-black font-bold uppercase tracking-widest transition-all duration-200 shadow-glow-magenta cursor-pointer active:scale-95"
           disabled={$standbyMode}
           onclick={goLobby}
         >
@@ -735,10 +735,8 @@
     {:else}
       <div class="mt-8 space-y-4">
         {#if showRetryButton}
-          <div
-            class="rounded-2xl border border-[var(--neon-magenta)] bg-[var(--cell)] p-4 shadow-[var(--glow-magenta)]"
-          >
-            <p class="text-sm text-[var(--text-secondary)] mb-3">
+          <div class="rounded-2xl border border-neon-magenta bg-cell p-4 shadow-glow-magenta">
+            <p class="text-sm text-fg-secondary mb-3">
               The invitation ended as <span class="font-bold uppercase">{invitationState}</span>.
               {#if isHost}
                 You can retry with the same guest.
@@ -751,7 +749,7 @@
                   disabled={$standbyMode || retryInFlight}
                   onclick={handleRetry}
                   label="Retry in"
-                  class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="w-full px-6 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               {/key}
             {:else}
@@ -759,13 +757,13 @@
                 type="button"
                 disabled={$standbyMode || retryInFlight}
                 onclick={handleRetry}
-                class="w-full px-6 py-3 bg-[var(--cell)] border-2 border-[var(--neon-cyan)] text-[var(--neon-cyan)] rounded-xl hover:bg-[var(--neon-cyan)] hover:text-black font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full px-6 py-3 bg-cell border-2 border-neon-cyan text-neon-cyan rounded-xl hover:bg-neon-cyan hover:text-black font-bold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {retryInFlight ? 'Retrying…' : 'Retry'}
               </button>
             {/if}
             {#if retryRemainingAttempts !== undefined}
-              <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
+              <p class="text-xs uppercase tracking-widest text-fg-muted mt-2">
                 {retryRemainingAttempts === 0
                   ? 'No retries left'
                   : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}
@@ -775,16 +773,14 @@
         {/if}
 
         {#if isWaiting}
-          <div
-            class="rounded-2xl border border-[var(--neon-magenta)] bg-[var(--cell)] p-4 shadow-[var(--glow-magenta)]"
-          >
+          <div class="rounded-2xl border border-neon-magenta bg-cell p-4 shadow-glow-magenta">
             <div class="flex items-center justify-between gap-4">
               <div>
-                <p class="text-xs uppercase tracking-[0.25em] text-[var(--text-muted)]">Invite</p>
-                <p class="text-lg font-bold text-[var(--neon-magenta)]">Invitation pending</p>
+                <p class="text-xs uppercase tracking-[0.25em] text-fg-muted">Invite</p>
+                <p class="text-lg font-bold text-neon-magenta">Invitation pending</p>
               </div>
               <button
-                class="px-4 py-2 rounded-xl border border-[var(--neon-magenta)] text-[var(--neon-magenta)] font-bold uppercase tracking-widest hover:bg-[var(--neon-magenta)] hover:text-black transition"
+                class="px-4 py-2 rounded-xl border border-neon-magenta text-neon-magenta font-bold uppercase tracking-widest hover:bg-neon-magenta hover:text-black transition"
                 disabled={$standbyMode}
                 onclick={handleCancelInvitation}
               >
@@ -792,7 +788,7 @@
               </button>
             </div>
             {#if isWaiting && retryRemainingAttempts !== undefined}
-              <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mt-2">
+              <p class="text-xs uppercase tracking-widest text-fg-muted mt-2">
                 {retryRemainingAttempts === 0
                   ? 'No retries left'
                   : `${retryRemainingAttempts} ${retryRemainingAttempts === 1 ? 'retry' : 'retries'} left`}

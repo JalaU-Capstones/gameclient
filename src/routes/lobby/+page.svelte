@@ -71,9 +71,7 @@
 </script>
 
 <section class="space-y-10 py-8 mx-auto max-w-4xl relative">
-  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-[var(--neon-cyan)] mb-12">
-    Lobby
-  </h2>
+  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-neon-cyan mb-12">Lobby</h2>
 
   {#if error}
     <div

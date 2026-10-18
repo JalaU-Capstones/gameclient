@@ -71,11 +71,11 @@
   void LEVEL_COLORS;
 
   const levelClasses: Record<string, string> = {
-    debug: 'border-[var(--text-muted)] text-[var(--text-muted)]',
-    info: 'border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)]',
+    debug: 'border-fg-muted text-fg-muted',
+    info: 'border-neon-cyan text-neon-cyan shadow-glow-cyan',
     warning:
       'border-amber-500 text-amber-600 dark:border-amber-400 dark:text-amber-400 dark:shadow-[0_0_8px_rgba(251,191,36,0.35)]',
-    error: 'border-[var(--neon-magenta)] text-[var(--neon-magenta)] shadow-[var(--glow-magenta)]',
+    error: 'border-neon-magenta text-neon-magenta shadow-glow-magenta',
     critical: 'border-red-500 text-red-500 shadow-[0_0_8px_rgba(248,113,113,0.4)]'
   };
 
@@ -271,12 +271,10 @@
 </script>
 
 <section class="space-y-10 py-8 mx-auto max-w-4xl">
-  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-[var(--neon-cyan)]">Logs</h2>
+  <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-neon-cyan">Logs</h2>
 
-  <div
-    class="bg-[var(--cell)] rounded-xl border border-[var(--neon-cyan)] p-6 shadow-[var(--glow-cyan)] space-y-6"
-  >
-    <div class="space-y-4 border-b border-[var(--neon-cyan)] pb-4">
+  <div class="bg-cell rounded-xl border border-neon-cyan p-6 shadow-glow-cyan space-y-6">
+    <div class="space-y-4 border-b border-neon-cyan pb-4">
       <div class="flex flex-wrap gap-2" role="tablist" aria-label="Logs tabs">
         <button
           type="button"
@@ -284,8 +282,8 @@
           aria-selected={activeTab === 'overview'}
           class={`px-4 py-2 uppercase tracking-widest text-xs rounded-full border transition ${
             activeTab === 'overview'
-              ? 'border-[var(--neon-magenta)] bg-[var(--neon-magenta)] text-[var(--bg)] shadow-[var(--glow-magenta)]'
-              : 'border-[var(--text-muted)] text-[var(--text-muted)] hover:border-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]'
+              ? 'border-neon-magenta bg-neon-magenta text-bg shadow-glow-magenta'
+              : 'border-fg-muted text-fg-muted hover:border-neon-cyan hover:text-neon-cyan'
           }`}
           onclick={() => switchTab('overview')}
         >
@@ -297,8 +295,8 @@
           aria-selected={activeTab === 'raw'}
           class={`px-4 py-2 uppercase tracking-widest text-xs rounded-full border transition ${
             activeTab === 'raw'
-              ? 'border-[var(--neon-magenta)] bg-[var(--neon-magenta)] text-[var(--bg)] shadow-[var(--glow-magenta)]'
-              : 'border-[var(--text-muted)] text-[var(--text-muted)] hover:border-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]'
+              ? 'border-neon-magenta bg-neon-magenta text-bg shadow-glow-magenta'
+              : 'border-fg-muted text-fg-muted hover:border-neon-cyan hover:text-neon-cyan'
           }`}
           onclick={() => switchTab('raw')}
         >
@@ -307,9 +305,7 @@
       </div>
 
       <div class="grid gap-4 md:grid-cols-3">
-        <label
-          class="flex flex-col gap-2 text-xs uppercase tracking-widest text-[var(--text-muted)]"
-        >
+        <label class="flex flex-col gap-2 text-xs uppercase tracking-widest text-fg-muted">
           Level
           <div class="flex flex-wrap gap-2" role="group" aria-label="Filter logs by level">
             {#each LOG_FILTERS as option (option)}
@@ -317,8 +313,8 @@
                 type="button"
                 class="px-3 py-1.5 uppercase tracking-widest text-[10px] rounded-full border transition active:scale-95
                   {filter === option
-                  ? 'border-[var(--neon-magenta)] bg-[var(--neon-magenta)] text-[var(--bg)] shadow-[var(--glow-magenta)]'
-                  : 'border-[var(--text-muted)] text-[var(--text-muted)] hover:border-[var(--neon-cyan)] hover:text-[var(--neon-cyan)]'}"
+                  ? 'border-neon-magenta bg-neon-magenta text-bg shadow-glow-magenta'
+                  : 'border-fg-muted text-fg-muted hover:border-neon-cyan hover:text-neon-cyan'}"
                 aria-pressed={filter === option}
                 onclick={() => setFilter(option)}
               >
@@ -328,24 +324,20 @@
           </div>
         </label>
 
-        <label
-          class="flex flex-col gap-2 text-xs uppercase tracking-widest text-[var(--text-muted)]"
-        >
+        <label class="flex flex-col gap-2 text-xs uppercase tracking-widest text-fg-muted">
           Event type
           <input
-            class="rounded-lg border border-[var(--neon-cyan)]/40 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)]"
+            class="rounded-lg border border-neon-cyan/40 bg-bg px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-neon-cyan"
             value={eventTypeFilter}
             oninput={(event) => setEventType((event.currentTarget as HTMLInputElement).value)}
             placeholder="event_name"
           />
         </label>
 
-        <label
-          class="flex flex-col gap-2 text-xs uppercase tracking-widest text-[var(--text-muted)]"
-        >
+        <label class="flex flex-col gap-2 text-xs uppercase tracking-widest text-fg-muted">
           Time range
           <select
-            class="rounded-lg border border-[var(--neon-cyan)]/40 bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--neon-cyan)]"
+            class="rounded-lg border border-neon-cyan/40 bg-bg px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-neon-cyan"
             value={timeRange}
             onchange={(event) =>
               setTimeRange((event.currentTarget as HTMLSelectElement).value as TimeRangeValue)}
@@ -361,7 +353,7 @@
     </div>
 
     {#if isLoading}
-      <p class="text-[var(--text-muted)] text-center py-8 text-xl">Loading logs...</p>
+      <p class="text-fg-muted text-center py-8 text-xl">Loading logs...</p>
     {:else if error}
       <div
         class="bg-red-500/10 border border-red-500 text-red-500 font-bold p-4 rounded-xl text-center"
@@ -388,18 +380,16 @@
           />
         </div>
 
-        <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+        <p class="text-xs uppercase tracking-widest text-fg-muted">
           Based on the latest {items.length} logs in the selected range.
         </p>
 
         <div class="grid gap-4 lg:grid-cols-2">
           <div
-            class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+            class="rounded-xl border border-neon-cyan/40 bg-bg p-4 space-y-3"
             data-testid="chart-activity"
           >
-            <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
-              Activity over time
-            </h3>
+            <h3 class="text-xs uppercase tracking-widest text-fg-muted">Activity over time</h3>
             {#if hasActivity}
               <BarChart
                 columns={activityColumns}
@@ -407,41 +397,37 @@
                 ariaLabel="Activity over time"
               />
             {:else}
-              <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+              <p class="text-fg-muted text-sm py-6 text-center">No data in range.</p>
             {/if}
           </div>
 
           <div
-            class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+            class="rounded-xl border border-neon-cyan/40 bg-bg p-4 space-y-3"
             data-testid="chart-levels"
           >
-            <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
-              Level distribution
-            </h3>
+            <h3 class="text-xs uppercase tracking-widest text-fg-muted">Level distribution</h3>
             {#if levelSlices.length > 0}
               <PieChart slices={levelSlices} ariaLabel="Level distribution" />
             {:else}
-              <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+              <p class="text-fg-muted text-sm py-6 text-center">No data in range.</p>
             {/if}
           </div>
         </div>
 
         <div
-          class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+          class="rounded-xl border border-neon-cyan/40 bg-bg p-4 space-y-3"
           data-testid="chart-events"
         >
-          <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
-            Top event types
-          </h3>
+          <h3 class="text-xs uppercase tracking-widest text-fg-muted">Top event types</h3>
           {#if topEventTypes.length > 0}
             <HBarChart items={topEventTypes} ariaLabel="Top event types" />
           {:else}
-            <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+            <p class="text-fg-muted text-sm py-6 text-center">No data in range.</p>
           {/if}
         </div>
       </div>
     {:else if items.length === 0}
-      <p class="font-(family-name:--font-title) text-[var(--text-muted)] text-center py-8">
+      <p class="font-(family-name:--font-title) text-fg-muted text-center py-8">
         {filter === 'all'
           ? 'No logs yet.'
           : `No ${LOG_FILTER_LABELS[filter].toLowerCase()} logs on this page.`}
@@ -449,7 +435,7 @@
     {:else}
       <div class="space-y-3">
         <div
-          class="flex items-center justify-between text-sm text-[var(--text-muted)] uppercase tracking-widest"
+          class="flex items-center justify-between text-sm text-fg-muted uppercase tracking-widest"
         >
           <span>{rangeStart}–{rangeEnd} of {total}</span>
           {#if filter !== 'all'}
@@ -459,7 +445,7 @@
         <ul class="space-y-3">
           {#each items as entry (entry.id)}
             <li
-              class="bg-[var(--bg)] border border-[var(--neon-cyan)]/30 rounded-lg hover:border-[var(--neon-cyan)] transition"
+              class="bg-bg border border-neon-cyan/30 rounded-lg hover:border-neon-cyan transition"
             >
               <button
                 type="button"
@@ -476,17 +462,17 @@
                     >
                       {entry.level}
                     </span>
-                    <span class="text-sm font-mono text-[var(--text-primary)] truncate">
+                    <span class="text-sm font-mono text-fg truncate">
                       {formatEventType(entry.eventType)}
                     </span>
                   </div>
-                  <p class="text-[var(--text-muted)] text-sm leading-relaxed">
+                  <p class="text-fg-muted text-sm leading-relaxed">
                     {summarizeMessage(entry.message)}
                   </p>
-                  <p class="text-xs text-[var(--text-muted)]">{formatTimestamp(entry.timestamp)}</p>
+                  <p class="text-xs text-fg-muted">{formatTimestamp(entry.timestamp)}</p>
                 </div>
                 <span
-                  class="self-start sm:self-center text-xs uppercase tracking-widest text-[var(--neon-cyan)] whitespace-nowrap"
+                  class="self-start sm:self-center text-xs uppercase tracking-widest text-neon-cyan whitespace-nowrap"
                 >
                   {isExpanded(entry.id) ? 'Hide details' : 'Details'}
                 </span>
@@ -494,41 +480,33 @@
 
               {#if isExpanded(entry.id)}
                 <div
-                  class="border-t border-[var(--neon-cyan)]/20 px-4 pb-4 pt-3 space-y-3 text-sm"
+                  class="border-t border-neon-cyan/20 px-4 pb-4 pt-3 space-y-3 text-sm"
                   data-testid="log-details"
                 >
                   <div>
-                    <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
-                      Full message
-                    </p>
-                    <p class="text-[var(--text-primary)] whitespace-pre-wrap break-words">
+                    <p class="text-xs uppercase tracking-widest text-fg-muted mb-1">Full message</p>
+                    <p class="text-fg whitespace-pre-wrap wrap-break-word">
                       {entry.message}
                     </p>
                   </div>
                   <div class="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
-                        Gameplay
-                      </p>
-                      <p class="font-mono text-xs break-all text-[var(--text-primary)]">
+                      <p class="text-xs uppercase tracking-widest text-fg-muted mb-1">Gameplay</p>
+                      <p class="font-mono text-xs break-all text-fg">
                         {entry.gameplayId ?? '—'}
                       </p>
                     </div>
                     <div>
-                      <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
-                        Player
-                      </p>
-                      <p class="font-mono text-xs break-all text-[var(--text-primary)]">
+                      <p class="text-xs uppercase tracking-widest text-fg-muted mb-1">Player</p>
+                      <p class="font-mono text-xs break-all text-fg">
                         {entry.playerId ?? '—'}
                       </p>
                     </div>
                   </div>
                   <div>
-                    <p class="text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">
-                      Metadata
-                    </p>
+                    <p class="text-xs uppercase tracking-widest text-fg-muted mb-1">Metadata</p>
                     <pre
-                      class="overflow-x-auto rounded-lg border border-[var(--neon-cyan)]/20 bg-[var(--cell)] p-3 text-xs font-mono text-[var(--text-primary)] whitespace-pre-wrap break-words">{formatMetadata(
+                      class="overflow-x-auto rounded-lg border border-neon-cyan/20 bg-cell p-3 text-xs font-mono text-fg whitespace-pre-wrap wrap-break-word">{formatMetadata(
                         entry.metadata
                       )}</pre>
                   </div>
@@ -542,16 +520,16 @@
 
     {#if !isLoading && activeTab === 'raw' && total > 0}
       <div
-        class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-[var(--neon-cyan)]/30"
+        class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-neon-cyan/30"
       >
-        <p class="text-sm text-[var(--text-muted)] uppercase tracking-widest">
+        <p class="text-sm text-fg-muted uppercase tracking-widest">
           Page {page} / {totalPages}
         </p>
         <div class="flex gap-3">
           <button
             type="button"
             data-testid="export-csv"
-            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--neon-magenta)]"
+            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-neon-magenta text-neon-magenta hover:bg-neon-magenta hover:text-bg transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-neon-magenta"
             disabled={items.length === 0 || isExporting}
             onclick={handleExportCsv}
           >
@@ -559,7 +537,7 @@
           </button>
           <button
             type="button"
-            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--neon-cyan)]"
+            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-bg transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-neon-cyan"
             disabled={!canGoPrev}
             onclick={goPrev}
           >
@@ -567,7 +545,7 @@
           </button>
           <button
             type="button"
-            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--neon-cyan)]"
+            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-bg transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-neon-cyan"
             disabled={!canGoNext}
             onclick={goNext}
           >

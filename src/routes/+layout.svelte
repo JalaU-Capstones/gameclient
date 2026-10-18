@@ -1036,7 +1036,7 @@
   <title>GameClient</title>
 </svelte:head>
 
-<div class="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] transition-colors duration-200">
+<div class="min-h-screen bg-bg text-fg transition-colors duration-200">
   {#if isStandby}
     <SessionReplacedBanner />
   {/if}
@@ -1048,7 +1048,7 @@
     <div class="flex flex-col">
       <GameTitle text="TIC TAC TOE" />
       {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
-        <span class="text-[var(--neon-cyan)] text-xs uppercase tracking-widest mt-1 opacity-80">
+        <span class="text-neon-cyan text-xs uppercase tracking-widest mt-1 opacity-80">
           Welcome, {sanitizeDisplayName($currentUser.name)}
         </span>
       {/if}
@@ -1060,7 +1060,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
+          class="rounded-full border border-neon-magenta px-6 py-2 text-sm uppercase tracking-widest text-neon-magenta shadow-glow-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
           data-testid="back-button"
         >
           <span class="inline-flex items-center gap-2">
@@ -1081,7 +1081,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
+          class="rounded-full border border-neon-magenta px-6 py-2 text-sm uppercase tracking-widest text-neon-magenta shadow-glow-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
           data-testid="lobby-button"
         >
           {isLeavingGame ? 'Leaving...' : 'Go to lobby'}
@@ -1092,7 +1092,7 @@
           type="button"
           onclick={performLogout}
           disabled={isStandby || sessionConflict}
-          class="rounded-full border border-[var(--neon-magenta)] px-4 py-2 text-xs uppercase tracking-widest text-[var(--neon-magenta)] transition hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition hover:bg-neon-magenta hover:text-bg active:scale-95"
           data-testid="logout-button"
         >
           Logout
