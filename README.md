@@ -24,6 +24,10 @@ pnpm install
 cp .env.example .env
 ```
 
+## Deployment
+
+La guía completa de despliegue del frontend está en [./.docs/deployment/README.md](./.docs/deployment/README.md). Cubre ambos artefactos del repositorio: el sitio estático en Render y la imagen Docker para self-hosting, con la validación de `ORIGIN`, los headers de proxy inverso y la checklist de pre-demo.
+
 ## Security
 
 - Every UUID coming from the backend must pass `isUuid` before being used in routes, redirects, or WS payloads.
@@ -323,9 +327,26 @@ usar HTTPS.
 ## Estructura del proyecto
 
 ```text
+.github/
+├── workflows/
+│   └── deploy.yml
+.env.example
+.docs/
+├── deployment/
+│   └── README.md
+Dockerfile
+docker-compose.yml
+render.yaml
+Makefile
+package.json
+svelte.config.js
+svelte.config.static.js
+scripts/
+├── build-static.mjs
 src/
 ├── app.css
 ├── app.html
+├── hooks.server.ts
 ├── lib/
 │   ├── api/
 │   │   ├── client.ts
@@ -342,7 +363,9 @@ src/
 │   │   └── ws.ts
 │   └── index.ts
 ├── routes/
-│   └── +page.svelte
+│   ├── +page.svelte
+│   └── health/
+│       └── +server.ts
 ├── vitest-setup.ts
 └── app.d.ts
 ```
