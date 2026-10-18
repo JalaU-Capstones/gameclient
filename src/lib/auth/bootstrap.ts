@@ -153,7 +153,7 @@ export function handleSessionReplaced(redirectPath = '/lobby'): void {
     globalGameplaysClient.disconnect();
     clearBootstrapSessionCache();
     session.clear();
-    pushToast('warning', 'Tu sesión se abrió en otro lugar.');
+    pushToast('warning', 'Your session was opened elsewhere.');
     void goto(resolve(`/login?redirect=${encodeURIComponent(redirectPath)}`));
   } finally {
     setTimeout(() => {
