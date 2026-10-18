@@ -105,7 +105,7 @@
     });
     const client = globalGameplaysClient.getOrCreate();
     if (!client.isAlive()) {
-      pushToast('warning', 'No se pudo reintentar. Vuelve a iniciar sesión.');
+      pushToast('warning', 'Unable to retry. Please log in again.');
       retryStates.delete(game.id);
       currentRetryGameId = null;
       return;
@@ -229,7 +229,7 @@
                       seconds={retryState.retryAfter}
                       disabled={retryState.inFlight || $standbyMode}
                       onclick={() => handleRetry(game)}
-                      label="Reintentar en"
+                      label="Retry in"
                       class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   {/key}
@@ -240,14 +240,14 @@
                     onclick={() => handleRetry(game)}
                     class="self-start md:self-auto px-4 py-2 rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] uppercase tracking-widest text-sm transition hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {retryState?.inFlight ? 'Reintentando…' : 'Reintentar'}
+                    {retryState?.inFlight ? 'Retrying…' : 'Retry'}
                   </button>
                 {/if}
                 {#if retryState?.remaining !== undefined}
                   <span class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
                     {retryState.remaining === 0
-                      ? 'Sin reintentos'
-                      : `${retryState.remaining} restante${retryState.remaining === 1 ? '' : 's'}`}
+                      ? 'No retries left'
+                      : `${retryState.remaining} remaining`}
                   </span>
                 {/if}
               {/if}
