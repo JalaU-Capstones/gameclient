@@ -303,6 +303,11 @@ vi.mock('$lib/components/ChatHost', () => ({
   default: ChatHostProbe
 }));
 
+vi.mock('$lib/components/Dock.svelte', async () => {
+  const module = await import('../tests/harnesses/DockProbe.svelte');
+  return { default: module.default };
+});
+
 describe('ChatHost visibility', () => {
   beforeEach(() => {
     currentPath = '/lobby';
@@ -331,6 +336,40 @@ describe('ChatHost visibility', () => {
       expect(host).toBeInTheDocument();
     } else {
       expect(host).not.toBeInTheDocument();
+    }
+  });
+});
+
+describe('Dock visibility', () => {
+  beforeEach(() => {
+    currentPath = '/lobby';
+    currentSearch = '';
+    mocks.subscribers.length = 0;
+    mocks.afterNavigateCallbacks.length = 0;
+    navigationHistory.reset();
+    session.reset();
+  });
+
+  it.each([
+    ['/lobby', true],
+    ['/game/abc-123', true],
+    ['/history', true],
+    ['/profile', true],
+    ['/logs', true],
+    ['/login', false],
+    ['/register', false]
+  ])('shows the dock with visible=%s on %s', (pathname, expectedVisible) => {
+    currentPath = pathname;
+    publishPage();
+
+    render(Layout, { props: { children: stubChild } });
+
+    const dock = screen.queryByTestId('dock');
+    if (expectedVisible) {
+      expect(dock).toBeInTheDocument();
+      expect(dock).toHaveAttribute('data-active-path', pathname);
+    } else {
+      expect(dock).not.toBeInTheDocument();
     }
   });
 });
