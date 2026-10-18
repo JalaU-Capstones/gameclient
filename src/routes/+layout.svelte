@@ -49,6 +49,7 @@
   import type { WebSocketClient } from '$lib/api/ws';
   import { isChatRouteVisible } from '$lib/chat/visibility';
   import GameTitle from '$lib/components/GameTitle.svelte';
+  import HeaderMenu from '$lib/components/HeaderMenu.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
   import SessionReplacedBanner from '$lib/components/SessionReplacedBanner.svelte';
@@ -1042,19 +1043,21 @@
   {/if}
   <header
     bind:this={headerElement}
-    class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5"
+    class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-5"
     inert={isStandby || sessionConflict}
   >
-    <div class="flex flex-col">
+    <div class="flex min-w-0 flex-col">
       <GameTitle text="TIC TAC TOE" />
       {#if $isAuthenticated && $currentUser && !$page.url.pathname.startsWith('/game')}
-        <span class="text-neon-cyan text-xs uppercase tracking-widest mt-1 opacity-80">
+        <span
+          class="mt-1 hidden text-xs uppercase tracking-widest text-neon-cyan opacity-80 sm:inline"
+        >
           Welcome, {sanitizeDisplayName($currentUser.name)}
         </span>
       {/if}
     </div>
 
-    <div class="flex items-center gap-3">
+    <div class="hidden items-center gap-3 md:flex">
       {#if $isAuthenticated && canGoBack}
         <button
           type="button"
@@ -1100,6 +1103,16 @@
       {/if}
       <ThemeToggle disabled={isStandby || sessionConflict} />
     </div>
+
+    <HeaderMenu
+      isAuthenticated={$isAuthenticated}
+      {canGoBack}
+      {showGoToLobby}
+      {isLeavingGame}
+      disabled={isStandby || sessionConflict}
+      onBack={handleBack}
+      onLogout={performLogout}
+    />
   </header>
   {#if sessionConflict}
     <SessionConflictModal
@@ -1121,7 +1134,7 @@
   />
   <main
     bind:this={mainElement}
-    class="mx-auto max-w-6xl px-6 pb-10"
+    class="mx-auto max-w-6xl px-4 pb-10 sm:px-6"
     inert={isStandby || sessionConflict}
   >
     {#if authError}

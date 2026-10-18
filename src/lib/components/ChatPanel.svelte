@@ -165,7 +165,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="fixed bottom-6 right-6 z-50 w-90 rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan"
+  class="fixed bottom-24 right-4 z-50 max-h-[70vh] w-90 max-w-[calc(100vw-2rem)] rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan sm:bottom-6 sm:right-6"
   role="region"
   aria-label="Chat"
 >

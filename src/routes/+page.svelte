@@ -3,7 +3,7 @@
 </script>
 
 {#if !$isHydrated}
-  <div class="flex min-h-[60vh] items-center justify-center">
+  <div class="flex min-h-[calc(100dvh-8rem)] items-center justify-center">
     <p class="text-sm uppercase tracking-widest text-fg-muted">Loading…</p>
   </div>
 {/if}
