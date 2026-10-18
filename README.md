@@ -207,6 +207,61 @@ disables the input and shows a countdown based on `retry_after_seconds`.
 No new variables. The endpoint is derived from `PUBLIC_WS_BASE` via
 `buildWsUrl('/api/v2/ws/chat')`, same as the gameplay and presence sockets.
 
+## Responsive design
+
+### Philosophy & Breakpoints
+
+The client is built mobile-first. Base Tailwind classes target `< 640px`, and
+the following breakpoints are applied upwards.
+
+| Breakpoint | Width      | Use case                                         |
+| ---------- | ---------- | ------------------------------------------------ |
+| _(base)_   | `< 640px`  | Mobile phones (375px+).                          |
+| `sm:`      | `≥ 640px`  | Large phones and small tablets.                  |
+| `md:`      | `≥ 768px`  | Tablets and desktop (primary navigation switch). |
+| `lg:`      | `≥ 1024px` | Desktop with wide data tables.                   |
+
+Minimum supported viewport: **375px**. The app remains functional at 320px but
+is not optimized for it.
+
+UI tokens such as `bg-bg`, `text-fg`, and `border-neon-cyan` are defined in
+`src/app.css` via `@theme`. Use these semantic tokens instead of arbitrary
+`[var(--...)]` values.
+
+### Global Shell (Header + Dock + Chat)
+
+| Element        | Responsive behavior                                                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Header**     | Switches at `md:`. Desktop shows all buttons; mobile shows only the hamburger (`HeaderMenu.svelte`).                       |
+| **Dock**       | Always visible on mobile, except it hides automatically when chat is open below `sm:`. Desktop keeps it visible with chat. |
+| **Chat Panel** | Mobile uses `w-full max-w-[calc(100vw-2rem)]` and `bottom-24` to clear the dock.                                           |
+
+The hamburger menu includes Back/Lobby (when applicable), Theme toggle, and
+Logout.
+
+### Page-Specific Adaptations
+
+- **Game board**: Cells use `aspect-square`, within a
+  `max-w-[min(90vw,28rem)]` container. The Host/Guest header stacks on mobile.
+- **Auth pages**: Buttons are `w-full` and share the same padding and size:
+  `px-4 py-4 md:py-5` and `text-xl sm:text-2xl md:text-3xl`.
+- **History**: Shows the table at `≥md` and cards at `<md`.
+- **Logs**: Shows a "Desktop only" message at `<lg` and the full UI at `≥lg`.
+- **Profile**: The form is `max-w-md mx-auto`. Buttons are full-width on mobile.
+- **Charts**: Use `h-40 sm:h-56` and stack vertically on mobile.
+
+### Manual QA Checklist
+
+Before merging a UI change, verify the following at **375px**, **768px**, and
+**1024px** widths:
+
+- [ ] No horizontal scrollbar appears on any page.
+- [ ] Buttons are tappable (minimum 40×40px) and not covered by the dock or chat.
+- [ ] Header switches correctly between the mobile hamburger and desktop buttons.
+- [ ] Invitation, session conflict, and takeover modals fit the viewport, with buttons stacked on mobile.
+- [ ] The mobile game board is square and its cells are usable.
+- [ ] `/history` shows cards on mobile and a table on desktop; `/logs` shows the desktop-only message on mobile.
+
 ## Docker
 
 The client includes a multi-stage `Dockerfile` and a `docker-compose.yml` file
