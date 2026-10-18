@@ -198,14 +198,14 @@
       <button
         type="submit"
         disabled={submitting}
-        class="w-full rounded-full border border-neon-magenta px-4 py-4 uppercase tracking-widest text-neon-magenta text-lg transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:text-2xl md:py-5 md:text-3xl"
+        class="flex w-full items-center justify-center rounded-full border border-neon-magenta px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-magenta transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
       <a
         href={resolve(registerHref)}
         onclick={handleRegisterClick}
-        class="block w-full rounded-full border border-neon-cyan px-4 py-4 text-center uppercase tracking-widest text-neon-cyan text-lg transition hover:bg-neon-cyan hover:text-bg active:scale-95 sm:text-2xl md:py-5 md:text-3xl"
+        class="flex w-full items-center justify-center rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-cyan transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Register
       </a>
