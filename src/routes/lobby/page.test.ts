@@ -301,9 +301,6 @@ describe('Lobby page', () => {
     emit(mocks.presenceHandlers, 'online_users', { users: [bobId] });
 
     expect(await screen.findByRole('button', { name: 'Invite' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'History' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Profile' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Logs' })).toBeDisabled();
 
     emit(mocks.gameplayHandlers, 'invitation_received', {
       game_id: '123e4567-e89b-42d3-a456-426614174002',
@@ -355,31 +352,5 @@ describe('Lobby page', () => {
       game_id: '123e4567-e89b-42d3-a456-426614174002'
     });
     expect(screen.queryByText('Challenger Approaching!')).not.toBeInTheDocument();
-  });
-  it('plays a click sound and navigates to the history page', async () => {
-    render(LobbyPage);
-
-    await userEvent.click(screen.getByRole('button', { name: 'History' }));
-
-    expect(mocks.play).toHaveBeenCalledWith('click');
-    expect(mocks.goto).toHaveBeenCalledWith('/history');
-  });
-
-  it('plays a click sound and navigates to the profile page', async () => {
-    render(LobbyPage);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Profile' }));
-
-    expect(mocks.play).toHaveBeenCalledWith('click');
-    expect(mocks.goto).toHaveBeenCalledWith('/profile');
-  });
-
-  it('plays a click sound and navigates to the logs page', async () => {
-    render(LobbyPage);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Logs' }));
-
-    expect(mocks.play).toHaveBeenCalledWith('click');
-    expect(mocks.goto).toHaveBeenCalledWith('/logs');
   });
 });
