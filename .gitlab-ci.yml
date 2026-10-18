@@ -21,7 +21,9 @@ variables:
 stages:
   - quality
   - test
+  - coverage
   - build
+  - verify
 
 workflow:
   rules:
@@ -57,6 +59,30 @@ test:node:
     - pnpm install --frozen-lockfile
   script:
     - pnpm test:cov
+  artifacts:
+    paths:
+      - coverage/
+    expire_in: 1 week
+
+coverage:codecov:
+  stage: coverage
+  image: python:3.12-alpine
+  script:
+    - |
+      if [ -n "$CODECOV_TOKEN" ]; then
+        apk add --no-cache curl
+        curl -fsSL https://uploader.codecov.io/latest/linux/codecov -o codecov
+        chmod +x codecov
+        ./codecov -t "$CODECOV_TOKEN" -f coverage/lcov.info || true
+      else
+        echo "CODECOV_TOKEN is not configured; skipping Codecov upload."
+      fi
+  needs:
+    - test:node
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - when: never
 
 build:
   stage: build
@@ -66,6 +92,15 @@ build:
     paths:
       - build/
     expire_in: 1 week
+
+verify:production:
+  stage: verify
+  image: curlimages/curl:8.8.0
+  script:
+    - url="${PRODUCTION_URL:-https://gameclient.onrender.com}"
+    - curl --fail --silent --show-error "$url/health"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
 docker:build:
   stage: build
