@@ -298,6 +298,38 @@ vi.mock('$lib/stores/ws', () => ({
   standbyMode: mocks.standbyMode
 }));
 
+describe('ChatHost visibility', () => {
+  beforeEach(() => {
+    currentPath = '/lobby';
+    currentSearch = '';
+    mocks.subscribers.length = 0;
+    mocks.afterNavigateCallbacks.length = 0;
+    navigationHistory.reset();
+    session.reset();
+  });
+
+  it.each([
+    ['/lobby', true],
+    ['/game/abc-123', true],
+    ['/history', true],
+    ['/profile', false],
+    ['/logs', false],
+    ['/login', false]
+  ])('renders the chat host with visible=%s on %s', (pathname, expectedVisible) => {
+    currentPath = pathname;
+    publishPage();
+
+    render(Layout, { props: { children: stubChild } });
+
+    const host = screen.queryByTestId('chat-host');
+    if (expectedVisible) {
+      expect(host).toBeInTheDocument();
+    } else {
+      expect(host).not.toBeInTheDocument();
+    }
+  });
+});
+
 describe('layout auth guard', () => {
   beforeEach(() => {
     currentPath = '/lobby';
