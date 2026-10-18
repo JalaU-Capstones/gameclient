@@ -80,7 +80,7 @@ sequenceDiagram
     Lobby->>Host: Navigate to /game/[id]
     Host->>Server: subscribe_game
     Note over Host: Waiting room shows guest, Cancel,<br/>and embedded online players
-    Server-->>Host: invitation_queued (when guest is busy)
+    Note over Server,Host: If the guest already has a waiting invitation, this one is queued server-side
     Guest->>Server: accept_invitation or reject_invitation
     Server-->>Host: invitation_accepted / invitation_rejected
     Server-->>Guest: invitation_accepted
@@ -93,6 +93,13 @@ The waiting room's **Cancel** button sends `leave_game` and returns the host to
 `/lobby`. A player who rejects or whose invitation expires or is canceled is
 also returned to the lobby with a toast. The waiting room includes an online
 players list for challenging another player without leaving the game page.
+
+### Leaving a game route
+
+The game page sends `leave_game` from its Svelte `onDestroy` cleanup when the
+route is destroyed. The waiting-room **Cancel** action also sends `leave_game`
+before navigating to `/lobby`. The route cleanup retains the shared gameplay
+socket; it unsubscribes page handlers and releases page-owned state.
 
 ## Online players e invitaciones
 
@@ -125,13 +132,27 @@ and navigates to the game when accepted.
 - Event handlers are detached from the old gameplay client and registered on
   each replacement published by `globalGameplaysClient`, including after a
   session takeover.
-- An unanswered invitation is rejected and dismissed after 60 seconds, with an
-  expiration toast.
+- An unanswered invitation modal closes after 70 seconds. This client-side
+  dismissal does not reject the invitation or show an expiration toast; the
+  backend TTL and `invitation_expired` event determine when the invitation
+  actually expires.
 - `sanitizeDisplayName` removes Unicode bidirectional control characters and
   surrounding whitespace before backend-provided names are displayed.
 - The layout sets `disabled` while in standby or session conflict. The modal
   closes when disabled, its root becomes `inert`, and accept/reject actions
   cannot be triggered.
+
+## WebSocket reconnection and session replacement
+
+- When a new socket connects for the same session, the previous socket closes
+  with code `1000` and reason `reconnected`; this is a normal same-session
+  replacement.
+- A socket revoked by session takeover closes with code `4409` and reason
+  `session_replaced`. The layout enters standby and prevents the replaced
+  session from reconnecting.
+- Invitation expiry and retry acknowledgements include `updated_at`. The game
+  page uses the retry timestamp to ignore older expiry events, preventing a
+  delayed event from changing a retried invitation back to `expired`.
 
 ## Docker
 
