@@ -1,7 +1,16 @@
-import type { Pathname } from '$app/types';
+const ALLOWED_PREFIXES = ['/lobby', '/game', '/profile', '/history', '/logs', '/health'];
 
-const ALLOWED_PREFIXES = ['/lobby', '/game', '/profile', '/history', '/logs'];
-export type RedirectPath = Pathname | `${Pathname}?${string}` | `${Pathname}#${string}`;
+export type RedirectPath =
+  | '/health'
+  | '/lobby'
+  | '/history'
+  | '/logs'
+  | '/profile'
+  | '/login'
+  | '/register'
+  | `/game/${string}`
+  | `${'/health' | '/lobby' | '/history' | '/logs' | '/profile' | '/login' | '/register' | `/game/${string}`}?${string}`
+  | `${'/health' | '/lobby' | '/history' | '/logs' | '/profile' | '/login' | '/register' | `/game/${string}`}#${string}`;
 
 /**
  * Validate a redirect path from the URL.

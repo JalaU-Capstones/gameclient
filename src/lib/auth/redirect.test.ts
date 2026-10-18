@@ -6,6 +6,7 @@ describe('resolveRedirect', () => {
     [null, '/lobby'],
     ['', '/lobby'],
     ['/history', '/history'],
+    ['/health', '/health'],
     ['/game/abc-123', '/game/abc-123'],
     ['/history?filter=wins', '/history?filter=wins'],
     ['https://evil.com', '/lobby'],
