@@ -131,8 +131,22 @@ jobs:
     needs: [quality, test, docker]
     runs-on: ubuntu-latest
     steps:
+      - name: Log production URL
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://gameclient-2msz.onrender.com' }}
+        run: echo "Verifying production at ${PRODUCTION_URL}/health"
+
       - name: Verify Render health
         env:
-          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://gameclient.onrender.com' }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://gameclient-2msz.onrender.com' }}
         run: |
-          curl --fail --silent --show-error "$PRODUCTION_URL/health"
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent --show-error --max-time 15 "${PRODUCTION_URL}/health"; then
+              echo "Production /health is reachable."
+              exit 0
+            fi
+            echo "Attempt ${attempt} failed; retrying in 30s."
+            sleep 30
+          done
+          echo "Production /health never became reachable."
+          exit 1
