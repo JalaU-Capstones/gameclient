@@ -7,6 +7,7 @@ import { navigationHistory } from '$lib/navigation/history';
 import { ApiError } from '$lib/api/errors';
 import Layout from './+layout.svelte';
 import LoginLayoutHarness from '../tests/harnesses/LoginLayoutHarness.svelte';
+import ChatHostProbe from '../tests/harnesses/ChatHostProbe.svelte';
 import { session } from '$lib/stores/session';
 
 interface PageSnapshot {
@@ -296,6 +297,10 @@ vi.mock('$lib/stores/ws', () => ({
   setLastPresenceToken: vi.fn(),
   setPresenceReconnectRequest: mocks.setPresenceReconnectRequest,
   standbyMode: mocks.standbyMode
+}));
+
+vi.mock('$lib/components/ChatHost', () => ({
+  default: ChatHostProbe
 }));
 
 describe('ChatHost visibility', () => {
