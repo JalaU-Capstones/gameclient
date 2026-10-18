@@ -1063,7 +1063,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60 sm:text-sm"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs sm:text-sm uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
           data-testid="back-button"
         >
           <span class="inline-flex items-center gap-2">
@@ -1084,7 +1084,7 @@
           type="button"
           onclick={handleBack}
           disabled={isLeavingGame || isStandby || sessionConflict}
-          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60 sm:text-sm"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs sm:text-sm uppercase tracking-widest text-neon-magenta transition-all duration-200 hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:opacity-60"
           data-testid="lobby-button"
         >
           {isLeavingGame ? 'Leaving...' : 'Go to lobby'}
@@ -1095,7 +1095,7 @@
           type="button"
           onclick={performLogout}
           disabled={isStandby || sessionConflict}
-          class="rounded-full border border-neon-magenta px-4 py-2 text-xs uppercase tracking-widest text-neon-magenta transition hover:bg-neon-magenta hover:text-bg active:scale-95"
+          class="rounded-full border border-neon-magenta px-4 py-2 text-xs sm:text-sm uppercase tracking-widest text-neon-magenta transition hover:bg-neon-magenta hover:text-bg active:scale-95"
           data-testid="logout-button"
         >
           Logout
