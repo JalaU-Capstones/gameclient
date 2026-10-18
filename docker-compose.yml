@@ -7,16 +7,42 @@ services:
         PUBLIC_API_BASE: ${DOCKER_PUBLIC_API_BASE:-http://localhost:8080}
         PUBLIC_WS_BASE: ${DOCKER_PUBLIC_WS_BASE:-http://localhost:8080}
         PUBLIC_REQUEST_TIMEOUT_MS: ${PUBLIC_REQUEST_TIMEOUT_MS:-15000}
+        PUBLIC_LOG_ADMIN_EMAILS: ${PUBLIC_LOG_ADMIN_EMAILS:-}
     container_name: gameclient
     restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /app/.cache:size=8m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     ports:
-      - '${APP_PORT:-3000}:3000'
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
+    networks:
+      - frontend
     environment:
       PORT: 3000
       HOST: 0.0.0.0
+      # ORIGIN is mandatory for adapter-node CSRF protection. In production it
+      # must be the public URL (for example https://app.example.com). Prompt 3
+      # adds a startup check that fails fast when NODE_ENV=production and
+      # ORIGIN still points to localhost.
       ORIGIN: ${ORIGIN:-http://localhost:3000}
+      # These three headers tell adapter-node which forwarded headers to read
+      # when it runs behind a reverse proxy. Leave them empty for direct
+      # access. Set them in .env when self-hosting behind nginx, Caddy, or
+      # Traefik:
+      #   ADDRESS_HEADER=X-Forwarded-For
+      #   PROTOCOL_HEADER=X-Forwarded-Proto
+      #   HOST_HEADER=X-Forwarded-Host
+      ADDRESS_HEADER: ${ADDRESS_HEADER:-}
+      PROTOCOL_HEADER: ${PROTOCOL_HEADER:-}
+      HOST_HEADER: ${HOST_HEADER:-}
     healthcheck:
       test:
         - CMD
@@ -24,8 +50,12 @@ services:
         - --quiet
         - --tries=1
         - --spider
-        - http://localhost:3000/
+        - http://127.0.0.1:3000/
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  frontend:
+    driver: bridge
