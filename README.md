@@ -146,6 +146,55 @@ and navigates to the game when accepted.
   closes when disabled, its root becomes `inert`, and accept/reject actions
   cannot be triggered.
 
+## Chat
+
+The client ships a global real-time chat on top of `/api/v2/ws/chat`. The UI
+is a floating bubble (`ChatBubble`) that, when opened, mounts a floating
+panel (`ChatPanel`) with the latest messages, the connected users count, and
+a single-line input. It is mounted once in the root layout and is only
+visible on `/lobby`, `/game/[id]`, and `/history`.
+
+### Opening and closing
+
+- **Open**: click the bubble. `chatStore.open()` resolves the access token
+  via `bootstrapSession()` and connects the WebSocket.
+- **Close**: click the X, press `Escape`, or navigate outside the whitelisted
+  routes. `chatStore.close()` disconnects the WebSocket.
+- The `open/closed` state is **not** persisted across reloads; the chat
+  always starts collapsed.
+
+### In-memory history
+
+Messages live in an in-memory buffer capped at 200 messages or 2 hours,
+whichever is hit first. The backend does not persist history: on every
+(re)connect, the client receives a `chat_history` frame with the recent
+messages and **replaces** the local buffer (server is the source of truth).
+On a Render cold start, the server-side buffer is empty and the client
+starts with no history.
+
+### Rate limiting
+
+The backend enforces **10 messages / 10 s** per user with a **30 s** block
+on excess. The client performs a matching local pre-check with the same
+window; if the server responds with `CHAT_RATE_LIMITED`, the panel
+disables the input and shows a countdown based on `retry_after_seconds`.
+
+### Session and standby
+
+- When the app enters standby (`session_replaced` or session conflict), the
+  panel becomes `inert`, the WebSocket disconnects, and the `open` state is
+  preserved. When standby is released, the chat reconnects automatically.
+- On `auth_error` with `reason` `invalid_token` or `expired_token`, the
+  store attempts a token refresh via `renewSessionToken()`. On failure it
+  forwards the error to the global `handleAuthFailure` handler.
+- A close with code `4409` (`session_replaced`) cleans up the store without
+  invoking `handleAuthFailure`; the layout already redirects to `/login`.
+
+### Environment
+
+No new variables. The endpoint is derived from `PUBLIC_WS_BASE` via
+`buildWsUrl('/api/v2/ws/chat')`, same as the gameplay and presence sockets.
+
 ## WebSocket reconnection and session replacement
 
 - When a new socket connects for the same session, the previous socket closes
