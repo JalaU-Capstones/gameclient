@@ -149,7 +149,7 @@
 </script>
 
 <section
-  class="space-y-14 py-8 px-6 text-center mx-auto max-w-lg min-h-[70vh] flex flex-col justify-center"
+  class="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center space-y-14 px-6 py-8 text-center"
 >
   <div class="space-y-3">
     <h2 class="text-4xl uppercase tracking-[0.25em] text-neon-cyan">Profile</h2>
@@ -160,7 +160,7 @@
     {/if}
   </div>
 
-  <form onsubmit={handleUpdate} class="space-y-10">
+  <form onsubmit={handleUpdate} class="mx-auto w-full max-w-md space-y-10 px-4 sm:px-0">
     <div class="space-y-4">
       <p class="font-bold text-fg text-xl md:text-3xl text-left">Your name</p>
       <input
@@ -219,7 +219,7 @@
     <button
       type="submit"
       disabled={submitting || !hasChanges}
-      class="w-full rounded-full border border-neon-magenta px-4 py-4 md:py-5 uppercase tracking-widest text-neon-magenta text-2xl! md:text-4xl! transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+      class="w-full rounded-full border border-neon-magenta px-4 py-4 uppercase tracking-widest text-neon-magenta text-lg transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:text-xl md:py-5"
     >
       {submitting ? 'Updating…' : 'Update account'}
     </button>
@@ -233,7 +233,7 @@
       <button
         type="button"
         onclick={handleAskDelete}
-        class="w-full rounded-full border border-red-500 px-4 py-4 md:py-5 uppercase tracking-widest text-red-500 text-2xl! md:text-4xl! transition hover:bg-red-500 hover:text-bg active:scale-95"
+        class="w-full rounded-full border border-red-500 px-4 py-4 uppercase tracking-widest text-red-500 text-lg transition hover:bg-red-500 hover:text-bg active:scale-95 sm:w-auto sm:text-xl md:py-5"
       >
         Delete account
       </button>
