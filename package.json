@@ -11,7 +11,10 @@
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",
+    "build:node": "vite build",
+    "build:static": "node scripts/build-static.mjs",
     "preview": "vite preview",
+    "preview:static": "npx --yes serve@14.2.1 build",
     "start": "node build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -34,6 +37,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.3",
