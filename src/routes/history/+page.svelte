@@ -284,7 +284,7 @@
 
       <div class="md:hidden flex flex-col gap-3">
         {#each gamesList as game (game.id)}
-          <div class="flex flex-col gap-2 rounded-xl border border-neon-cyan/40 bg-cell p-4">
+          <div class="p-4 rounded-xl border border-neon-cyan/40 bg-cell flex flex-col gap-2">
             <div class="flex justify-between text-sm">
               <span class="text-fg-muted">Opponent</span>
               <span class="font-bold text-fg">{rivalName(game)}</span>
