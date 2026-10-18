@@ -1,0 +1,49 @@
+name: Deploy to Render
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Trigger Render deploy
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify secrets are present
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}" ]; then
+            echo "ERROR: RENDER_DEPLOY_HOOK_WEB secret is not configured."
+            exit 1
+          fi
+
+      - name: Trigger deploy on Render
+        id: trigger
+        run: |
+          response=$(curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}")
+          echo "Render response: $response"
+
+      - name: Deployment summary
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          {
+            echo "## Deploy to Render (frontend)"
+            echo ""
+            echo "- Trigger: \`$EVENT_NAME\`"
+            if [ -n "$RUN_ID" ]; then
+              echo "- Upstream CI: [$RUN_ID]($RUN_URL)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

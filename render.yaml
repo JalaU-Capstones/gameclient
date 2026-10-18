@@ -1,0 +1,48 @@
+# Render Blueprint for the GameClient frontend.
+#
+# This deploys the static SPA artifact produced by `pnpm build:static`.
+# The Node adapter artifact is used only for Docker / self-hosting.
+#
+# Deployment flow:
+#   1. GitHub Actions runs CI on `main`.
+#   2. On CI success, `.github/workflows/deploy.yml` triggers the deploy hook
+#      stored in the `RENDER_DEPLOY_HOOK_WEB` GitHub secret.
+#   3. Render runs `buildCommand` and publishes `staticPublishPath`.
+#
+# `PUBLIC_*` variables are inlined into the bundle at build time. Changing
+# them requires a new deploy; they cannot be read at runtime by the CDN.
+
+services:
+  - type: web
+    name: gameclient
+    runtime: static
+    plan: free
+    region: oregon
+    buildCommand: pnpm install --frozen-lockfile && pnpm build:static
+    staticPublishPath: ./build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=(), interest-cohort=()
+    envVars:
+      - key: PUBLIC_API_BASE
+        value: https://gameapi-9vos.onrender.com
+      - key: PUBLIC_WS_BASE
+        value: https://gameapi-9vos.onrender.com
+      - key: PUBLIC_REQUEST_TIMEOUT_MS
+        value: '15000'
+      - key: PUBLIC_LOG_ADMIN_EMAILS
+        sync: false
