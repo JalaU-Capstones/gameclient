@@ -82,28 +82,30 @@
   }
 </script>
 
-{#if hasData}
-  <svg
-    role="img"
-    aria-label={ariaLabel}
-    viewBox="0 0 {size} {size}"
-    width={size}
-    height={size}
-    data-testid="pie-chart"
-  >
-    {#each arcs as arc, index (index)}
-      <path
-        d={arc.path}
-        fill={arc.slice.color}
-        stroke="var(--bg)"
-        stroke-width="1"
-        data-testid="pie-slice"
-        data-slice-label={arc.slice.label}
-      >
-        <title>{arc.slice.label}: {arc.slice.value}</title>
-      </path>
-    {/each}
-  </svg>
-{:else if emptyMessage}
-  <div data-testid="pie-empty-state">{emptyMessage}</div>
-{/if}
+<div class="flex h-40 w-full flex-col sm:h-56">
+  {#if hasData}
+    <svg
+      role="img"
+      aria-label={ariaLabel}
+      viewBox="0 0 {size} {size}"
+      width={size}
+      height={size}
+      data-testid="pie-chart"
+    >
+      {#each arcs as arc, index (index)}
+        <path
+          d={arc.path}
+          fill={arc.slice.color}
+          stroke="var(--bg)"
+          stroke-width="1"
+          data-testid="pie-slice"
+          data-slice-label={arc.slice.label}
+        >
+          <title>{arc.slice.label}: {arc.slice.value}</title>
+        </path>
+      {/each}
+    </svg>
+  {:else if emptyMessage}
+    <div data-testid="pie-empty-state">{emptyMessage}</div>
+  {/if}
+</div>

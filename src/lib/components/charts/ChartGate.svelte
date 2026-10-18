@@ -6,7 +6,7 @@
   export let componentProps: Record<string, unknown> = {};
 </script>
 
-<div data-testid="chart-shell">
+<div class="w-full overflow-hidden" data-testid="chart-shell">
   {#if show && component}
     <svelte:component this={component} {...componentProps} />
   {/if}
