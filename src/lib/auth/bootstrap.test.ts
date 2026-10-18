@@ -182,7 +182,7 @@ describe('bootstrapSession', () => {
     handleAuthFailure(error, undefined, '/lobby');
 
     expect(mocks.broadcastLogout).not.toHaveBeenCalled();
-    expect(mocks.pushToast).toHaveBeenCalledWith('warning', 'Tu sesión se abrió en otro lugar.');
+    expect(mocks.pushToast).toHaveBeenCalledWith('warning', 'Your session was opened elsewhere.');
     expect(session).toBeDefined();
   });
 
