@@ -67,7 +67,7 @@ The full frontend deployment guide lives in [./.docs/deployment/README.md](./.do
 pnpm dev
 ```
 
-The application runs at `http://localhost:5173` and uses the Vite proxy to forward `/api` and `/health` to `http://localhost:8080`.
+The application runs at `http://localhost:5173` and uses the Vite proxy to forward `/api` and `/health` to `http://localhost:8080`. Primary navigation lives in the bottom dock, which is available on every authenticated route except `/login` and `/register`.
 
 ## Invitation flow
 
