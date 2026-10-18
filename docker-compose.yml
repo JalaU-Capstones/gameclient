@@ -43,6 +43,14 @@ services:
       ADDRESS_HEADER: ${ADDRESS_HEADER:-}
       PROTOCOL_HEADER: ${PROTOCOL_HEADER:-}
       HOST_HEADER: ${HOST_HEADER:-}
+      # Local Docker testing runs with NODE_ENV=production (from the Dockerfile)
+      # but with ORIGIN pointing to localhost. The startup guard in
+      # src/hooks.server.ts rejects that combination. This escape hatch keeps
+      # `docker compose up -d --build` working on a laptop.
+      #
+      # NEVER set this in a real production deployment. Instead, set ORIGIN
+      # to the public URL.
+      SKIP_ORIGIN_GUARD: ${SKIP_ORIGIN_GUARD:-true}
     healthcheck:
       test:
         - CMD
@@ -50,7 +58,7 @@ services:
         - --quiet
         - --tries=1
         - --spider
-        - http://127.0.0.1:3000/
+        - http://127.0.0.1:3000/health
       interval: 30s
       timeout: 5s
       retries: 3

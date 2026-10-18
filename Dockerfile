@@ -60,7 +60,7 @@ COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "build"]
