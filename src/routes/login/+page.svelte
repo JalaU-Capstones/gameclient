@@ -156,39 +156,37 @@
 </script>
 
 <section
-  class="space-y-14 py-8 px-6 text-center mx-auto max-w-lg min-h-[70vh] flex flex-col justify-center"
+  class="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center space-y-14 px-4 py-8 text-center sm:px-6"
 >
-  <h2 class="text-4xl uppercase tracking-[0.25em] text-neon-cyan">Login</h2>
+  <h2 class="text-3xl uppercase tracking-[0.25em] text-neon-cyan sm:text-4xl md:text-5xl">Login</h2>
 
   {#if !pendingTakeover}
     <form onsubmit={handleSubmit} class="space-y-10">
       <div class="space-y-4">
-        <p class="font-bold text-fg text-xl md:text-3xl text-left">Insert your email</p>
+        <p class="text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl">Insert your email</p>
         <input
           bind:value={inputEmail}
           type="email"
           placeholder="Email"
-          class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-2xl!
-          transition
-          focus:outline-none focus:shadow-glow-cyan"
+          class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-lg transition sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
         />
       </div>
 
       <div class="space-y-4">
-        <p class="font-bold text-fg text-3xl text-left">Insert your password</p>
+        <p class="text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl">
+          Insert your password
+        </p>
         <div class="relative">
           <input
             bind:value={inputPassword}
             type={visible ? 'text' : 'password'}
             placeholder="Password"
-            class="w-full rounded-xl border border-neon-cyan bg-cell pl-4 pr-24 py-5 text-2xl!
-          transition
-          focus:outline-none focus:shadow-glow-cyan"
+            class="w-full rounded-xl border border-neon-cyan bg-cell pl-4 pr-20 py-5 text-lg transition sm:pr-24 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
           />
           <button
             type="button"
             onclick={handleToggleVisibility}
-            class="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-sm! uppercase tracking-widest text-neon-cyan transition hover:text-neon-magenta"
+            class="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-sm uppercase tracking-widest text-neon-cyan transition hover:text-neon-magenta"
           >
             {visible ? 'HIDE' : 'SHOW'}
           </button>
@@ -200,14 +198,14 @@
       <button
         type="submit"
         disabled={submitting}
-        class="w-full rounded-full border border-neon-magenta px-4 py-4 md:py-5 uppercase tracking-widest text-neon-magenta text-2xl! md:text-4xl! transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        class="w-full rounded-full border border-neon-magenta px-4 py-4 uppercase tracking-widest text-neon-magenta text-lg transition hover:bg-neon-magenta hover:text-bg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:text-2xl md:py-5 md:text-3xl"
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
       <a
         href={resolve(registerHref)}
         onclick={handleRegisterClick}
-        class="block w-full rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-center uppercase tracking-widest text-neon-cyan text-2xl! md:text-4xl! transition hover:bg-neon-cyan hover:text-bg active:scale-95"
+        class="block w-full rounded-full border border-neon-cyan px-4 py-4 text-center uppercase tracking-widest text-neon-cyan text-lg transition hover:bg-neon-cyan hover:text-bg active:scale-95 sm:text-2xl md:py-5 md:text-3xl"
       >
         Register
       </a>
