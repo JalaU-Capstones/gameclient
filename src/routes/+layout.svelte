@@ -47,13 +47,16 @@
   import { userFacingMessage } from '$lib/errors/messages';
   import { resolveRedirect } from '$lib/auth/redirect';
   import type { WebSocketClient } from '$lib/api/ws';
+  import { isChatRouteVisible } from '$lib/chat/visibility';
   import GameTitle from '$lib/components/GameTitle.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import SessionConflictModal from '$lib/components/SessionConflictModal.svelte';
   import SessionReplacedBanner from '$lib/components/SessionReplacedBanner.svelte';
   import ToastHost from '$lib/components/ToastHost.svelte';
   import InvitationHost from '$lib/components/InvitationHost.svelte';
+  import ChatHost from '$lib/components/ChatHost.svelte';
   import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
+  import { chatStore } from '$lib/stores/chat.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
   import { isUuid } from '$lib/utils/uuid';
   import { sanitizeDisplayName } from '$lib/utils/text';
@@ -103,6 +106,7 @@
   } | null = null;
   const tabId = createTabId();
   let isPublicRoute = $derived(PUBLIC_ROUTES.includes($page.url.pathname));
+  let chatVisible = $derived(isChatRouteVisible($page.url.pathname));
   let canGoBack = $derived($navigationHistory.length >= 2 && navigationHistory.canGoBack());
   // No previous page (direct URL, reload): offer a way out to the lobby instead of nothing.
   let showGoToLobby = $derived(
@@ -914,6 +918,13 @@
     }
   });
 
+  onMount(() => {
+    chatStore.initialize({
+      onAuthFailure: (error) =>
+        handleAuthFailure(error, (message) => (authError = message), $page.url.pathname)
+    });
+  });
+
   $effect(() => {
     if (!$standbyMode) return;
     if (import.meta.env.DEV) {
@@ -933,6 +944,11 @@
     }
     if (!$isHydrated) return;
     if (!$isAuthenticated) {
+      // Close and clear the unread badge, but keep the client binding so the
+      // next authenticated session reuses the same ChatClient. Full teardown
+      // (chatStore.reset()) would require re-running chatStore.initialize().
+      chatStore.close();
+      chatStore.markRead();
       lastEnsurePath = null;
       setStandbyMode(false);
       releaseLayoutPresence(true);
@@ -1070,6 +1086,7 @@
   {/if}
   <ToastHost />
   <InvitationHost disabled={isStandby || sessionConflict} />
+  <ChatHost visible={chatVisible} disabled={isStandby || sessionConflict} />
   <main
     bind:this={mainElement}
     class="mx-auto max-w-6xl px-6 pb-10"
