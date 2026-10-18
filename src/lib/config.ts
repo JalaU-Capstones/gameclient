@@ -12,6 +12,7 @@ interface AppConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
   requestTimeoutMs: number;
+  logAdminEmails: string[];
 }
 
 function readEnv(name: string, fallback: string): string {
@@ -19,10 +20,18 @@ function readEnv(name: string, fallback: string): string {
   return value !== undefined && value !== '' ? value : fallback;
 }
 
+function parseEmailList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+}
+
 export const config: AppConfig = {
   apiBaseUrl: readEnv('PUBLIC_API_BASE', ''),
   wsBaseUrl: readEnv('PUBLIC_WS_BASE', ''),
-  requestTimeoutMs: Number(readEnv('PUBLIC_REQUEST_TIMEOUT_MS', '15000'))
+  requestTimeoutMs: Number(readEnv('PUBLIC_REQUEST_TIMEOUT_MS', '15000')),
+  logAdminEmails: parseEmailList(readEnv('PUBLIC_LOG_ADMIN_EMAILS', ''))
 };
 
 export function buildWsUrl(path: string): string {

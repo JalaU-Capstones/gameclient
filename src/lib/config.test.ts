@@ -11,7 +11,8 @@ describe('application configuration', () => {
     vi.doMock('$env/static/public', () => ({
       PUBLIC_API_BASE: undefined,
       PUBLIC_WS_BASE: undefined,
-      PUBLIC_REQUEST_TIMEOUT_MS: undefined
+      PUBLIC_REQUEST_TIMEOUT_MS: undefined,
+      PUBLIC_LOG_ADMIN_EMAILS: undefined
     }));
     vi.resetModules();
 
@@ -20,7 +21,8 @@ describe('application configuration', () => {
     expect(config).toEqual({
       apiBaseUrl: '',
       wsBaseUrl: '',
-      requestTimeoutMs: 15000
+      requestTimeoutMs: 15000,
+      logAdminEmails: []
     });
   });
 
@@ -28,7 +30,8 @@ describe('application configuration', () => {
     vi.doMock('$env/static/public', () => ({
       PUBLIC_API_BASE: 'https://api.example.test/',
       PUBLIC_WS_BASE: '',
-      PUBLIC_REQUEST_TIMEOUT_MS: 'not-a-number'
+      PUBLIC_REQUEST_TIMEOUT_MS: 'not-a-number',
+      PUBLIC_LOG_ADMIN_EMAILS: '  admin@example.test , guest@example.test  '
     }));
     vi.resetModules();
 
@@ -37,6 +40,7 @@ describe('application configuration', () => {
     expect(config.apiBaseUrl).toBe('https://api.example.test/');
     expect(config.wsBaseUrl).toBe('');
     expect(Number.isNaN(config.requestTimeoutMs)).toBe(true);
+    expect(config.logAdminEmails).toEqual(['admin@example.test', 'guest@example.test']);
     expect(JSON.stringify(config)).not.toMatch(/token|secret|credential/i);
   });
 
@@ -44,7 +48,8 @@ describe('application configuration', () => {
     vi.doMock('$env/static/public', () => ({
       PUBLIC_API_BASE: undefined,
       PUBLIC_WS_BASE: undefined,
-      PUBLIC_REQUEST_TIMEOUT_MS: undefined
+      PUBLIC_REQUEST_TIMEOUT_MS: undefined,
+      PUBLIC_LOG_ADMIN_EMAILS: undefined
     }));
     vi.resetModules();
     const { buildWsUrl, config } = await import('./config');
@@ -63,7 +68,8 @@ describe('application configuration', () => {
     vi.doMock('$env/static/public', () => ({
       PUBLIC_API_BASE: undefined,
       PUBLIC_WS_BASE: undefined,
-      PUBLIC_REQUEST_TIMEOUT_MS: undefined
+      PUBLIC_REQUEST_TIMEOUT_MS: undefined,
+      PUBLIC_LOG_ADMIN_EMAILS: undefined
     }));
     vi.resetModules();
     const { buildWsUrl, config } = await import('./config');
