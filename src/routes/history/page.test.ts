@@ -239,9 +239,9 @@ describe('History page', () => {
     render(HistoryPage);
 
     const cards = await screen.findAllByRole('listitem');
-    expect(within(cards[0]).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
-    expect(within(cards[1]).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
-    expect(within(cards[2]).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(cards[1]).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(cards[2]).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
   it('hides the retry button on guest games and non-terminal games', async () => {
@@ -254,12 +254,12 @@ describe('History page', () => {
     render(HistoryPage);
 
     const cards = await screen.findAllByRole('listitem');
-    expect(within(cards[0]).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
-    expect(within(cards[1]).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
-    expect(within(cards[2]).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    expect(within(cards[0]).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(within(cards[1]).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(within(cards[2]).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
-  it('sends retry_invitation when the host clicks Reintentar', async () => {
+  it('sends retry_invitation when the host clicks Retry', async () => {
     mockBackend([
       gameplay('g1', ME.id, 'pablo-id', { winner: null, reason: 'rejected' }, 'rejected')
     ]);
@@ -267,8 +267,8 @@ describe('History page', () => {
     render(HistoryPage);
     const card = (await screen.findAllByRole('listitem'))[0];
 
-    await screen.findByRole('button', { name: 'Reintentar' });
-    await within(card).getByRole('button', { name: 'Reintentar' }).click();
+    await screen.findByRole('button', { name: 'Retry' });
+    await within(card).getByRole('button', { name: 'Retry' }).click();
 
     expect(mocks.client.send).toHaveBeenCalledWith('retry_invitation', { game_id: 'g1' });
   });
@@ -280,12 +280,12 @@ describe('History page', () => {
 
     render(HistoryPage);
     const card = (await screen.findAllByRole('listitem'))[0];
-    await within(card).getByRole('button', { name: 'Reintentar' }).click();
+    await within(card).getByRole('button', { name: 'Retry' }).click();
 
     emit('invitation_retry_accepted', { game_id: 'g1', attempt: 1, remaining_attempts: 2 });
 
     await screen.findByText('Waiting for response');
-    expect(within(card).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('shows a countdown button when the retry cooldown is active', async () => {
@@ -295,12 +295,12 @@ describe('History page', () => {
 
     render(HistoryPage);
     const card = (await screen.findAllByRole('listitem'))[0];
-    await within(card).getByRole('button', { name: 'Reintentar' }).click();
+    await within(card).getByRole('button', { name: 'Retry' }).click();
 
     emit('error', { code: 'RETRY_LIMIT_EXCEEDED', retry_after_seconds: 12 });
 
     expect(await screen.findByTestId('countdown-button')).toBeInTheDocument();
-    expect(screen.getByTestId('countdown-button')).toHaveTextContent('Reintentar en (12s)');
+    expect(screen.getByTestId('countdown-button')).toHaveTextContent('Retry in (12s)');
   });
 
   it('shows an error message and no cards when the games cannot be loaded', async () => {
