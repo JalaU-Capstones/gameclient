@@ -543,10 +543,21 @@ pnpm format
 | `docker`            | Build verification via the production Docker image | main branch and tags |
 | `verify-production` | Render health check via `/health`                  | main branch          |
 
+> **`verify-production` timing.** On GitHub Actions, `verify-production` runs
+> inside `ci.yml`, _before_ `deploy.yml` triggers the Render deploy. It
+> confirms that the **previous** production deploy is reachable, not the one
+> this push will produce. That is intentional: `deploy.yml` fires only after
+> `CI` succeeds, so verifying the new deploy from inside `CI` would require a
+> second workflow. See the `deploy.yml` history for the optional follow-up.
+
 Optional environment variables:
 
-- `CODECOV_TOKEN` — uploads coverage to Codecov when present.
-- `PRODUCTION_URL` — overrides the production health-check URL; defaults to the public Render deployment.
+- `CODECOV_TOKEN` — uploads coverage to Codecov when present. Both pipelines
+  skip the upload cleanly when the token is missing.
+- `PRODUCTION_URL` — URL used by the production health check. Set it as a
+  **repository variable** (GitHub: Settings → Secrets and variables → Actions
+  → Variables) and a **CI/CD variable** (GitLab: Settings → CI/CD → Variables).
+  Defaults to `https://gameclient-2msz.onrender.com` when unset.
 
 ## Visual design
 
