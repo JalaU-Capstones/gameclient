@@ -52,6 +52,51 @@ describe('logsApi', () => {
     expect(page.items[0].metadata).toEqual({ reason: 'abandon' });
   });
 
+  it('supports the admin endpoint and all log filter params', async () => {
+    server.use(
+      http.get('*/api/v2/logs', ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get('level')).toBe('WARNING');
+        expect(url.searchParams.get('event_type')).toBe('game_abandoned');
+        expect(url.searchParams.get('gameplay_id')).toBe('game-42');
+        expect(url.searchParams.get('player_id')).toBe('player-7');
+        expect(url.searchParams.get('from')).toBe('2026-10-16T11:00:00.000Z');
+        expect(url.searchParams.get('to')).toBe('2026-10-16T12:00:00.000Z');
+        return HttpResponse.json({
+          total: 1,
+          limit: 50,
+          offset: 0,
+          items: [
+            {
+              id: 'log-22',
+              level: 'warning',
+              eventType: 'game_abandoned',
+              message: 'App warning',
+              playerId: 'player-7',
+              gameplayId: 'game-42',
+              metadata: null,
+              timestamp: '2026-10-16T12:00:00Z'
+            }
+          ]
+        });
+      })
+    );
+
+    const page = await logsApi.listAll({
+      limit: 50,
+      offset: 0,
+      level: 'warning',
+      eventType: 'game_abandoned',
+      gameplayId: 'game-42',
+      playerId: 'player-7',
+      from: '2026-10-16T11:00:00.000Z',
+      to: '2026-10-16T12:00:00.000Z'
+    });
+
+    expect(page.items[0].level).toBe('warning');
+    expect(page.items[0].playerId).toBe('player-7');
+  });
+
   it('omits empty query params', async () => {
     server.use(
       http.get('*/api/v2/logs/me', ({ request }) => {
