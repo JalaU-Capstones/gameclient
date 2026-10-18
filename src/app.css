@@ -80,7 +80,10 @@ h3 {
   text-shadow: var(--glow-magenta);
 }
 
-button,
+button {
+  font-family: inherit;
+}
+
 input,
 textarea,
 select {
