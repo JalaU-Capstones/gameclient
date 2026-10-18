@@ -67,6 +67,8 @@ test:node:
 coverage:codecov:
   stage: coverage
   image: python:3.12-alpine
+  before_script: []
+  cache: {}
   script:
     - |
       if [ -n "$CODECOV_TOKEN" ]; then
@@ -96,9 +98,22 @@ build:
 verify:production:
   stage: verify
   image: curlimages/curl:8.8.0
+  before_script: []
+  cache: {}
   script:
-    - url="${PRODUCTION_URL:-https://gameclient.onrender.com}"
-    - curl --fail --silent --show-error "$url/health"
+    - |
+      url="${PRODUCTION_URL:-https://gameclient-2msz.onrender.com}"
+      echo "Verifying production at ${url}/health"
+      for attempt in $(seq 1 10); do
+        if curl --fail --silent --show-error --max-time 15 "${url}/health"; then
+          echo "Production /health is reachable."
+          exit 0
+        fi
+        echo "Attempt ${attempt} failed; retrying in 30s."
+        sleep 30
+      done
+      echo "Production /health never became reachable."
+      exit 1
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
