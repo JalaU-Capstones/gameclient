@@ -5,6 +5,7 @@ import {
   announceGameplayRelease,
   announceGameplayTakeover,
   announcePresenceListRequest,
+  broadcastLogout,
   announcePresenceOwner,
   announcePresenceQuery,
   announcePresenceRelease,
@@ -533,6 +534,152 @@ describe('presence ownership lock', () => {
     } finally {
       release?.();
       closeChannel();
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
+  });
+
+  it('is a no-op when BroadcastChannel is unavailable', () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    vi.stubGlobal('BroadcastChannel', undefined);
+
+    try {
+      const closeChannel = openSessionChannel();
+      expect(closeChannel).toBeTypeOf('function');
+      expect(() => closeChannel()).not.toThrow();
+      expect(() => broadcastLogout()).not.toThrow();
+    } finally {
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
+  });
+
+  it('times out a pending session release request without throwing', async () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      postMessage() {}
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+
+    try {
+      await expect(requestSessionRelease('requester-tab', 10)).resolves.toBe(false);
+    } finally {
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
+  });
+
+  it('closes an opened session channel idempotently', () => {
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      postMessage() {}
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+
+    try {
+      const closeChannel = openSessionChannel();
+      expect(() => {
+        closeChannel();
+        closeChannel();
+      }).not.toThrow();
+    } finally {
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
+  });
+
+  it('claims gameplay ownership through the broadcast fallback and produces unique tab ids', async () => {
+    vi.resetModules();
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      postMessage() {}
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+    Reflect.deleteProperty(navigator, 'locks');
+
+    try {
+      const module = await import('./sessionLock');
+      const release = await module.claimGameplayOwnership('gameplay-tab');
+      const first = module.createTabId();
+      const second = module.createTabId();
+      expect(typeof release).toBe('function');
+      expect(first).not.toBe(second);
+      expect(() => release()).not.toThrow();
+    } finally {
+      if (originalBroadcastChannel) {
+        Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
+      } else {
+        Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+      }
+    }
+  });
+
+  it('acquires the session lock through the broadcast fallback when Web Locks is unavailable', async () => {
+    vi.resetModules();
+    const originalBroadcastChannel = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'BroadcastChannel'
+    );
+    class MockBroadcastChannel {
+      onmessage: ((event: MessageEvent<SessionMessage>) => void) | null = null;
+
+      postMessage() {}
+      close() {}
+    }
+    Object.defineProperty(globalThis, 'BroadcastChannel', {
+      configurable: true,
+      value: MockBroadcastChannel
+    });
+    Reflect.deleteProperty(navigator, 'locks');
+
+    try {
+      const module = await import('./sessionLock');
+      const release = await module.acquireSessionLock();
+      expect(typeof release).toBe('function');
+      expect(() => release()).not.toThrow();
+    } finally {
       if (originalBroadcastChannel) {
         Object.defineProperty(globalThis, 'BroadcastChannel', originalBroadcastChannel);
       } else {
