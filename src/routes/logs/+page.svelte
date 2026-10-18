@@ -9,12 +9,26 @@
   import type { LogEntry } from '$lib/types/api';
   import { sounds } from '$lib/audio/sounds';
   import { userFacingMessage } from '$lib/errors/messages';
+  import StatCard from '$lib/components/charts/StatCard.svelte';
+  import BarChart from '$lib/components/charts/BarChart.svelte';
+  import PieChart from '$lib/components/charts/PieChart.svelte';
+  import HBarChart from '$lib/components/charts/HBarChart.svelte';
   import {
     LOG_FILTER_LABELS,
     LOG_FILTERS,
     summarizeMessage,
     type LogFilter
   } from '$lib/utils/logFilter';
+  import {
+    activityColorMap,
+    aggregateActivity,
+    aggregateLevelDistribution,
+    aggregateTopEventTypes,
+    hasChartData,
+    LEVEL_COLORS,
+    type ActivityRange
+  } from '$lib/utils/logAggregations';
+  import { downloadCsv, logsToCsv } from '$lib/utils/csv';
 
   type LogTab = 'overview' | 'raw';
   type TimeRangeValue = 'all' | '1h' | '6h' | '24h' | '7d';
@@ -32,6 +46,7 @@
   let eventTypeFilter = $state('');
   let timeRange = $state<TimeRangeValue>('24h');
   let didFallbackToMine = $state(false);
+  let isExporting = $state(false);
   const expandedIds = new SvelteSet<string>();
 
   const isAdminUser = $derived(
@@ -43,6 +58,17 @@
   const canGoNext = $derived(activeTab === 'raw' && offset + limit < total && items.length > 0);
   const rangeStart = $derived(total === 0 ? 0 : offset + 1);
   const rangeEnd = $derived(Math.min(offset + items.length, total));
+  const chartRange: ActivityRange = $derived(
+    // "all" has no fixed width, so the overview charts bucket the latest 24 hours.
+    timeRange === 'all' ? '24h' : (timeRange as ActivityRange)
+  );
+  const activityColumns = $derived(aggregateActivity(items, chartRange, Date.now()));
+  const activityColors = $derived(activityColorMap());
+  const levelSlices = $derived(aggregateLevelDistribution(items));
+  const topEventTypes = $derived(aggregateTopEventTypes(items));
+  const hasActivity = $derived(hasChartData(activityColumns));
+
+  void LEVEL_COLORS;
 
   const levelClasses: Record<string, string> = {
     debug: 'border-[var(--text-muted)] text-[var(--text-muted)]',
@@ -203,6 +229,23 @@
     void loadPage(0);
   }
 
+  async function handleExportCsv() {
+    if (items.length === 0 || isExporting) return;
+    isExporting = true;
+    try {
+      const csv = logsToCsv(items);
+      const stamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d+Z$/, '')
+        .replace('T', '-');
+      downloadCsv(csv, { filename: `gameapi-logs-${stamp}.csv` });
+      sounds.play('click');
+    } finally {
+      isExporting = false;
+    }
+  }
+
   function goPrev() {
     if (!canGoPrev || isLoading) return;
     sounds.play('click');
@@ -327,34 +370,74 @@
       </div>
     {:else if activeTab === 'overview'}
       <div class="space-y-6">
-        <div class="grid gap-4 md:grid-cols-5">
-          <div class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4">
-            <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">Total</p>
-            <p class="mt-2 text-2xl font-bold text-[var(--text-primary)]">{stats.total}</p>
+        <div class="grid gap-4 grid-cols-2 md:grid-cols-5">
+          <StatCard label="Total" value={stats.total} accent="cyan" testId="stat-total" />
+          <StatCard label="Warnings" value={stats.warnings} accent="amber" testId="stat-warnings" />
+          <StatCard label="Errors" value={stats.errors} accent="magenta" testId="stat-errors" />
+          <StatCard
+            label="Unique players"
+            value={stats.uniquePlayers}
+            accent="neutral"
+            testId="stat-players"
+          />
+          <StatCard
+            label="Unique games"
+            value={stats.uniqueGames}
+            accent="neutral"
+            testId="stat-games"
+          />
+        </div>
+
+        <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+          Based on the latest {items.length} logs in the selected range.
+        </p>
+
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div
+            class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+            data-testid="chart-activity"
+          >
+            <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+              Activity over time
+            </h3>
+            {#if hasActivity}
+              <BarChart
+                columns={activityColumns}
+                colorMap={activityColors}
+                ariaLabel="Activity over time"
+              />
+            {:else}
+              <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+            {/if}
           </div>
-          <div class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4">
-            <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">Warnings</p>
-            <p class="mt-2 text-2xl font-bold text-amber-500">{stats.warnings}</p>
-          </div>
-          <div class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4">
-            <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">Errors</p>
-            <p class="mt-2 text-2xl font-bold text-[var(--neon-magenta)]">{stats.errors}</p>
-          </div>
-          <div class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4">
-            <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">Unique players</p>
-            <p class="mt-2 text-2xl font-bold text-[var(--text-primary)]">
-              {stats.uniquePlayers}
-            </p>
-          </div>
-          <div class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4">
-            <p class="text-xs uppercase tracking-widest text-[var(--text-muted)]">Unique games</p>
-            <p class="mt-2 text-2xl font-bold text-[var(--text-primary)]">{stats.uniqueGames}</p>
+
+          <div
+            class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+            data-testid="chart-levels"
+          >
+            <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+              Level distribution
+            </h3>
+            {#if levelSlices.length > 0}
+              <PieChart slices={levelSlices} ariaLabel="Level distribution" />
+            {:else}
+              <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+            {/if}
           </div>
         </div>
+
         <div
-          class="rounded-xl border border-dashed border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-6 text-center text-[var(--text-muted)]"
+          class="rounded-xl border border-[var(--neon-cyan)]/40 bg-[var(--bg)] p-4 space-y-3"
+          data-testid="chart-events"
         >
-          Charts placeholder
+          <h3 class="text-xs uppercase tracking-widest text-[var(--text-muted)]">
+            Top event types
+          </h3>
+          {#if topEventTypes.length > 0}
+            <HBarChart items={topEventTypes} ariaLabel="Top event types" />
+          {:else}
+            <p class="text-[var(--text-muted)] text-sm py-6 text-center">No data in range.</p>
+          {/if}
         </div>
       </div>
     {:else if items.length === 0}
@@ -465,6 +548,15 @@
           Page {page} / {totalPages}
         </p>
         <div class="flex gap-3">
+          <button
+            type="button"
+            data-testid="export-csv"
+            class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-[var(--neon-magenta)] text-[var(--neon-magenta)] hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--neon-magenta)]"
+            disabled={items.length === 0 || isExporting}
+            onclick={handleExportCsv}
+          >
+            Export CSV
+          </button>
           <button
             type="button"
             class="px-5 py-2 uppercase tracking-widest text-xs rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--neon-cyan)]"
