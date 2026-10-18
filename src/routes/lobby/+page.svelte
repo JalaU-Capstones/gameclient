@@ -1,7 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { resolve } from '$app/paths';
   import { bootstrapSession, handleAuthFailure } from '$lib/auth/bootstrap';
   import { sounds } from '$lib/audio/sounds';
   import OnlinePlayersMenu from '$lib/components/OnlinePlayersMenu.svelte';
@@ -29,24 +27,6 @@
       guest_id: userId,
       client_request_id: safeRandomUuid()
     });
-  }
-
-  function handleOpenHistory() {
-    if ($standbyMode) return;
-    sounds.play('click');
-    goto(resolve('/history'));
-  }
-
-  function handleOpenProfile() {
-    if ($standbyMode) return;
-    sounds.play('click');
-    goto(resolve('/profile'));
-  }
-
-  function handleOpenLogs() {
-    if ($standbyMode) return;
-    sounds.play('click');
-    goto(resolve('/logs'));
   }
 
   onMount(() => {
@@ -94,33 +74,6 @@
   <h2 class="text-4xl text-center uppercase tracking-[0.25em] text-[var(--neon-cyan)] mb-12">
     Lobby
   </h2>
-
-  <div class="flex flex-wrap justify-center gap-4">
-    <button
-      type="button"
-      disabled={$standbyMode}
-      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-      onclick={handleOpenHistory}
-    >
-      History
-    </button>
-    <button
-      type="button"
-      disabled={$standbyMode}
-      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-      onclick={handleOpenProfile}
-    >
-      Profile
-    </button>
-    <button
-      type="button"
-      disabled={$standbyMode}
-      class="px-6 py-2 uppercase tracking-widest text-sm rounded-full border border-[var(--neon-cyan)] text-[var(--neon-cyan)] shadow-[var(--glow-cyan)] hover:bg-[var(--neon-cyan)] hover:text-[var(--bg)] transition active:scale-95 whitespace-nowrap"
-      onclick={handleOpenLogs}
-    >
-      Logs
-    </button>
-  </div>
 
   {#if error}
     <div
