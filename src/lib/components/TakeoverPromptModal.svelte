@@ -49,11 +49,11 @@
         id="takeover-title"
         class="text-2xl font-bold uppercase tracking-widest text-[var(--neon-cyan)]"
       >
-        Ya hay otra sesión activa
+        Another session is active
       </h2>
       <p class="mt-4 text-base text-[var(--text-primary)]">
-        Hay otra sesión activa en otra pestaña o navegador. Si continúas aquí, esa sesión se
-        cerrará.
+        Another session is active in another tab or browser. If you continue here, that session will
+        be closed.
       </p>
 
       {#if errorMessage}
@@ -71,7 +71,7 @@
             seconds={retryAfterSeconds}
             disabled={isSubmitting}
             onclick={onConfirm}
-            label="Reintentar en"
+            label="Retry in"
             dataTestId="takeover-confirm"
             class="flex-1 rounded-full border border-[var(--neon-cyan)] bg-[var(--neon-cyan)] px-4 py-3 text-sm uppercase tracking-widest text-[var(--bg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           />
@@ -84,7 +84,7 @@
             data-testid="takeover-confirm"
             class="flex-1 rounded-full border border-[var(--neon-cyan)] bg-[var(--neon-cyan)] px-4 py-3 text-sm uppercase tracking-widest text-[var(--bg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Continuar aquí
+            Continue here
           </button>
         {/if}
 
@@ -95,7 +95,7 @@
           data-testid="takeover-cancel"
           class="rounded-full border border-[var(--text-muted)] bg-transparent px-4 py-3 text-sm uppercase tracking-widest text-[var(--text-muted)] transition hover:border-[var(--text-primary)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Cancelar
+          Cancel
         </button>
       </div>
     </div>
