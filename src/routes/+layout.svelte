@@ -55,6 +55,7 @@
   import ToastHost from '$lib/components/ToastHost.svelte';
   import InvitationHost from '$lib/components/InvitationHost.svelte';
   import ChatHost from '$lib/components/ChatHost.svelte';
+  import Dock from '$lib/components/Dock.svelte';
   import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { chatStore } from '$lib/stores/chat.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
@@ -643,49 +644,63 @@
     void ensurePresence();
   }
 
+  async function leaveActiveGameIfNeeded(): Promise<void> {
+    if (!/^\/game\//.test($page.url.pathname)) return;
+    const gameId = $page.params.id;
+    if (!gameId) return;
+
+    isLeavingGame = true;
+    try {
+      const gameplaysClient = globalGameplaysClient.getOrCreate();
+      const isConnected = get(gameplaysClient.state) === 'connected';
+
+      if (isConnected) {
+        await new Promise<void>((resolveLeave) => {
+          let unsubscribe = () => {};
+          const timeout = setTimeout(finish, 1000);
+          function finish() {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolveLeave();
+          }
+          unsubscribe = gameplaysClient.on(
+            'game_ended',
+            (payload: { game_id?: string } | undefined) => {
+              if (payload?.game_id && payload.game_id !== gameId) return;
+              finish();
+            }
+          );
+          gameplaysClient.send('leave_game', { game_id: gameId });
+        });
+      } else {
+        gameplaysClient.send('leave_game', { game_id: gameId });
+      }
+    } catch (err) {
+      console.warn('[game] failed to confirm leaving game', err);
+    } finally {
+      isLeavingGame = false;
+    }
+  }
+
   async function handleBack() {
     if (isLeavingGame) return;
     sounds.play('click');
     const target = canGoBack ? navigationHistory.back() : '/lobby';
     if (!target) return;
 
-    if (/^\/game\//.test($page.url.pathname)) {
-      const gameId = $page.params.id;
-      if (gameId) {
-        isLeavingGame = true;
-        try {
-          const gameplaysClient = globalGameplaysClient.getOrCreate();
-          const isConnected = get(gameplaysClient.state) === 'connected';
+    await leaveActiveGameIfNeeded();
+    goto(resolve(target as Pathname));
+  }
 
-          if (isConnected) {
-            await new Promise<void>((resolveLeave) => {
-              let unsubscribe = () => {};
-              const timeout = setTimeout(finish, 1000);
-              function finish() {
-                clearTimeout(timeout);
-                unsubscribe();
-                resolveLeave();
-              }
-              unsubscribe = gameplaysClient.on(
-                'game_ended',
-                (payload: { game_id?: string } | undefined) => {
-                  if (payload?.game_id && payload.game_id !== gameId) return;
-                  finish();
-                }
-              );
-              gameplaysClient.send('leave_game', { game_id: gameId });
-            });
-          } else {
-            gameplaysClient.send('leave_game', { game_id: gameId });
-          }
-        } catch (err) {
-          console.warn('[game] failed to confirm leaving game', err);
-        }
-      }
+  async function handleDockNavigate(path: string) {
+    if (path === $page.url.pathname) return;
+    if (!/^\/game\//.test($page.url.pathname)) {
+      goto(resolve(path as Pathname));
+      return;
     }
 
-    goto(resolve(target as Pathname));
-    isLeavingGame = false;
+    await leaveActiveGameIfNeeded();
+    goto(resolve(path as Pathname));
   }
 
   onMount(() => {
@@ -1048,7 +1063,18 @@
           class="rounded-full border border-[var(--neon-magenta)] px-6 py-2 text-sm uppercase tracking-widest text-[var(--neon-magenta)] shadow-[var(--glow-magenta)] transition-all duration-200 hover:bg-[var(--neon-magenta)] hover:text-[var(--bg)] active:scale-95 disabled:opacity-60"
           data-testid="back-button"
         >
-          {isLeavingGame ? 'Leaving...' : '← Back'}
+          <span class="inline-flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4">
+              <path
+                d="M15 18 9 12l6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>{isLeavingGame ? 'Leaving...' : 'Back'}</span>
+          </span>
         </button>
       {:else if $isAuthenticated && showGoToLobby}
         <button
@@ -1087,6 +1113,12 @@
   <ToastHost />
   <InvitationHost disabled={isStandby || sessionConflict} />
   <ChatHost visible={chatVisible} disabled={isStandby || sessionConflict} />
+  <Dock
+    visible={!isPublicRoute}
+    currentPath={$page.url.pathname}
+    onNavigate={handleDockNavigate}
+    disabled={isStandby || sessionConflict}
+  />
   <main
     bind:this={mainElement}
     class="mx-auto max-w-6xl px-6 pb-10"
