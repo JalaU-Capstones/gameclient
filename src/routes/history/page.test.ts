@@ -47,6 +47,8 @@ const server = setupServer();
 const ME = {
   id: 'me-id',
   name: 'laura',
+  username: 'ada-lovelace',
+  usernameModifiedBySystem: false,
   email: 'laura@example.com',
   registerDate: '2026-10-01T12:00:00Z'
 };
