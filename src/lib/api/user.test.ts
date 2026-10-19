@@ -100,9 +100,9 @@ describe('usersApi', () => {
         })
       );
 
-      await expect(usersApi.update('u1', { name: 'Ada' })).resolves.toBeUndefined();
+      await expect(usersApi.update('u1', { username: 'ada' })).resolves.toBeUndefined();
 
-      expect(received).toEqual({ name: 'Ada' });
+      expect(received).toEqual({ username: 'ada' });
     });
 
     it('fails with a 409 ApiError when the email is already registered', async () => {
@@ -127,7 +127,7 @@ describe('usersApi', () => {
         )
       );
 
-      const error = await usersApi.update('other', { name: 'Eve' }).catch((e: unknown) => e);
+      const error = await usersApi.update('other', { username: 'eve' }).catch((e: unknown) => e);
 
       expect(error).toMatchObject({ status: 403 });
     });
