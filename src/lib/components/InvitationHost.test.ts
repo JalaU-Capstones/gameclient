@@ -82,6 +82,8 @@ describe('InvitationHost', () => {
     session.setUser({
       id: 'host-1',
       name: 'Host',
+      username: 'host',
+      usernameModifiedBySystem: false,
       email: 'host@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -104,7 +106,7 @@ describe('InvitationHost', () => {
     });
 
     expect(await screen.findByText('Challenger Approaching!')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.getByText('@Bob')).toBeInTheDocument();
   });
 
   it('ignores invitation payloads missing required fields', async () => {
@@ -199,6 +201,8 @@ describe('InvitationHost', () => {
     session.setUser({
       id: 'host-1',
       name: 'Host',
+      username: 'host',
+      usernameModifiedBySystem: false,
       email: 'host@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });

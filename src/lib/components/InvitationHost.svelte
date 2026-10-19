@@ -8,7 +8,7 @@
   import { currentUser } from '$lib/stores/session';
   import { pushToast } from '$lib/stores/toasts';
   import { globalGameplaysClient, standbyMode } from '$lib/stores/ws';
-  import { sanitizeDisplayName } from '$lib/utils/text';
+  import { formatUsername, sanitizeDisplayName } from '$lib/utils/text';
   import { isUuid } from '$lib/utils/uuid';
 
   interface IncomingInvite {
@@ -283,7 +283,8 @@
         Challenger Approaching!
       </h3>
       <p class="break-words text-lg text-fg-secondary">
-        <span class="font-bold text-neon-cyan">{incomingInvite.host.name}</span> wants to play.
+        <span class="font-bold text-neon-cyan">{formatUsername(incomingInvite.host.name)}</span>
+        wants to play.
       </p>
       {#if incomingInvite.promoted}
         <p class="break-words text-sm text-fg-muted italic">
