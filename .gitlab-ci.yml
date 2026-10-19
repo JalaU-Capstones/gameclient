@@ -119,6 +119,7 @@ verify:production:
 
 docker:build:
   stage: build
+  timeout: 20m
   image: docker:27
   services:
     - docker:27-dind
