@@ -11,3 +11,11 @@ export function sanitizeDisplayName(value: string | null | undefined): string {
     .replace(C0_C1_CONTROLS, '')
     .trim();
 }
+
+/** Formats a username for display, trimming whitespace and avoiding duplicate @ prefixes. */
+export function formatUsername(username: string | null | undefined): string {
+  if (!username) return '';
+  const trimmed = username.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+}

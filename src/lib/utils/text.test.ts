@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeDisplayName } from './text';
+import { formatUsername, sanitizeDisplayName } from './text';
+
+describe('formatUsername', () => {
+  it('prefixes usernames with @', () => {
+    expect(formatUsername('john-doe')).toBe('@john-doe');
+  });
+
+  it('does not add a duplicate prefix', () => {
+    expect(formatUsername('@john-doe')).toBe('@john-doe');
+  });
+
+  it('trims whitespace before formatting', () => {
+    expect(formatUsername('  john-doe  ')).toBe('@john-doe');
+  });
+
+  it('returns an empty string for empty or missing usernames', () => {
+    expect(formatUsername('')).toBe('');
+    expect(formatUsername(null)).toBe('');
+    expect(formatUsername(undefined)).toBe('');
+    expect(formatUsername('   ')).toBe('');
+  });
+});
 
 describe('sanitizeDisplayName', () => {
   it('removes bidirectional controls and trims whitespace', () => {
