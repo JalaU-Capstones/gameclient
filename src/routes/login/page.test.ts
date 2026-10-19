@@ -54,6 +54,10 @@ vi.mock('$app/paths', () => ({
   resolve: mocks.resolve
 }));
 
+vi.mock('$lib/stores/toasts', () => ({
+  pushToast: mocks.pushToast
+}));
+
 describe('Login page', () => {
   beforeEach(() => {
     session.clear();
@@ -61,6 +65,7 @@ describe('Login page', () => {
     mocks.login.mockReset();
     mocks.me.mockReset();
     mocks.goto.mockReset();
+    mocks.pushToast.mockReset();
     mocks.resolve = (path: string) => path;
     mocks.page.url.searchParams = new URLSearchParams();
   });
@@ -210,6 +215,36 @@ describe('Login page', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/lobby'));
+  });
+
+  it('shows a warning toast when the system auto-generated the username', async () => {
+    const user = userEvent.setup();
+    mocks.login.mockResolvedValue({
+      access_token: 'abc',
+      token_type: 'bearer',
+      user: {
+        id: '1',
+        name: 'Ada',
+        username: 'ada',
+        usernameModifiedBySystem: true,
+        email: 'ada@example.com',
+        registerDate: '2026-01-01T00:00:00Z'
+      },
+      other_active_sessions: 0,
+      username_was_auto_generated: true
+    });
+    render(LoginPage);
+
+    await user.type(screen.getByPlaceholderText('Email'), 'ada@example.com');
+    await user.type(screen.getByPlaceholderText('Password'), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(mocks.pushToast).toHaveBeenCalledWith(
+        'warning',
+        'Your username was adjusted by the system. Please update it in your profile.'
+      )
+    );
   });
 
   it('shows the invalid credentials message when the API responds with 401', async () => {
