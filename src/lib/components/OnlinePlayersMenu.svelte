@@ -2,7 +2,7 @@
   import { onlinePlayers } from '$lib/stores/onlinePlayers.svelte';
   import { currentUser } from '$lib/stores/session';
   import type { PublicUser } from '$lib/types/api';
-  import { sanitizeDisplayName } from '$lib/utils/text';
+  import { formatUsername, sanitizeDisplayName } from '$lib/utils/text';
 
   interface Props {
     title?: string;
@@ -32,7 +32,9 @@
         <li
           class="flex items-center justify-between gap-3 rounded-xl border border-neon-cyan/40 bg-bg px-4 py-3"
         >
-          <span class="truncate font-semibold text-fg">{sanitizeDisplayName(user.name)}</span>
+          <span class="truncate font-semibold text-fg"
+            >{formatUsername(sanitizeDisplayName(user.name))}</span
+          >
           {#if onInvite}
             <button
               type="button"
