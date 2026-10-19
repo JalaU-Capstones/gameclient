@@ -33,6 +33,8 @@ vi.mock('$lib/audio/sounds', () => ({
 const ada = {
   id: '1',
   name: 'Ada',
+  username: 'ada',
+  usernameModifiedBySystem: false,
   email: 'ada@example.com',
   registerDate: '2026-01-15T10:00:00Z'
 };
@@ -49,10 +51,10 @@ describe('Profile page', () => {
     mocks.renew.mockResolvedValue('new-token');
   });
 
-  it('prefills name and email from the session and never shows a password', () => {
+  it('prefills username and email from the session and never shows a password', () => {
     render(ProfilePage);
 
-    expect(screen.getByPlaceholderText('Name')).toHaveValue('Ada');
+    expect(screen.getByPlaceholderText('Username')).toHaveValue('ada');
     expect(screen.getByPlaceholderText('Email')).toHaveValue('ada@example.com');
     expect(screen.getByPlaceholderText('Leave empty to keep current')).toHaveValue('');
   });
@@ -61,11 +63,11 @@ describe('Profile page', () => {
     session.reset();
     render(ProfilePage);
 
-    expect(screen.getByPlaceholderText('Name')).toHaveValue('');
+    expect(screen.getByPlaceholderText('Username')).toHaveValue('');
 
     session.setUser(ada);
 
-    await waitFor(() => expect(screen.getByPlaceholderText('Name')).toHaveValue('Ada'));
+    await waitFor(() => expect(screen.getByPlaceholderText('Username')).toHaveValue('ada'));
     expect(screen.getByPlaceholderText('Email')).toHaveValue('ada@example.com');
     expect(screen.getByRole('button', { name: 'Update account' })).toBeDisabled();
   });
@@ -74,10 +76,10 @@ describe('Profile page', () => {
     const user = userEvent.setup();
     render(ProfilePage);
 
-    await user.type(screen.getByPlaceholderText('Name'), 'x');
+    await user.type(screen.getByPlaceholderText('Username'), 'x');
     session.setUser({ ...ada });
 
-    expect(screen.getByPlaceholderText('Name')).toHaveValue('Adax');
+    expect(screen.getByPlaceholderText('Username')).toHaveValue('adax');
   });
 
   it('shows the member-since date', () => {
@@ -96,11 +98,53 @@ describe('Profile page', () => {
     const update = screen.getByRole('button', { name: 'Update account' });
     expect(update).toBeDisabled();
 
-    await user.type(screen.getByPlaceholderText('Name'), 'x');
+    await user.type(screen.getByPlaceholderText('Username'), '-x');
     expect(update).toBeEnabled();
 
-    await user.type(screen.getByPlaceholderText('Name'), '{Backspace}');
+    await user.type(screen.getByPlaceholderText('Username'), '{Backspace}');
     expect(update).toBeDisabled();
+  });
+
+  it('shows the adjusted-username banner when the system changed the username', () => {
+    session.setUser({ ...ada, usernameModifiedBySystem: true });
+    render(ProfilePage);
+
+    expect(
+      screen.getByText(
+        'Your username was automatically adjusted to meet our new rules. Please choose a new one below.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('shows a validation error and disables Update for an invalid username', async () => {
+    const user = userEvent.setup();
+    render(ProfilePage);
+
+    const username = screen.getByPlaceholderText('Username');
+    await user.clear(username);
+    await user.type(username, 'john doe');
+
+    expect(
+      screen.getByText(
+        'Use only letters, numbers, hyphens, and underscores. Must start and end with a letter or number.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update account' })).toBeDisabled();
+  });
+
+  it.each([
+    ['ab', 'Username must be at least 3 characters.'],
+    ['a'.repeat(31), 'Username must be at most 30 characters.']
+  ])('shows the length validation for username %s', async (value, message) => {
+    const user = userEvent.setup();
+    render(ProfilePage);
+
+    const username = screen.getByPlaceholderText('Username');
+    await user.clear(username);
+    await user.type(username, value);
+
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update account' })).toBeDisabled();
   });
 
   it('enables Update when only the password is filled', async () => {
@@ -148,14 +192,14 @@ describe('Profile page', () => {
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.clear(screen.getByPlaceholderText('Name'));
-      await user.type(screen.getByPlaceholderText('Name'), 'Ada Lovelace');
+      await user.clear(screen.getByPlaceholderText('Username'));
+      await user.type(screen.getByPlaceholderText('Username'), 'ada-lovelace');
       await user.type(screen.getByPlaceholderText('Leave empty to keep current'), 'newsecret1');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
       await waitFor(() =>
         expect(mocks.update).toHaveBeenCalledWith('1', {
-          name: 'Ada Lovelace',
+          username: 'ada-lovelace',
           password: 'newsecret1'
         })
       );
@@ -163,9 +207,14 @@ describe('Profile page', () => {
       expect(screen.getByPlaceholderText('Leave empty to keep current')).toHaveValue('');
       expect(screen.getByRole('button', { name: 'Update account' })).toBeDisabled();
 
-      let stored: { name: string; email: string } | null = null;
+      let stored: { username: string; usernameModifiedBySystem: boolean; email: string } | null =
+        null;
       session.subscribe((state) => (stored = state.user))();
-      expect(stored).toMatchObject({ name: 'Ada Lovelace', email: 'ada@example.com' });
+      expect(stored).toMatchObject({
+        username: 'ada-lovelace',
+        usernameModifiedBySystem: false,
+        email: 'ada@example.com'
+      });
     });
 
     it('normalizes the email to lowercase before sending it', async () => {
@@ -188,7 +237,7 @@ describe('Profile page', () => {
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.type(screen.getByPlaceholderText('Username'), '-x');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
       expect(await screen.findByRole('button', { name: 'Updating…' })).toBeDisabled();
@@ -208,7 +257,7 @@ describe('Profile page', () => {
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.type(screen.getByPlaceholderText('Username'), '-x');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
       expect(await screen.findByText(message)).toBeInTheDocument();
@@ -218,15 +267,28 @@ describe('Profile page', () => {
       session.subscribe((state) => (stored = state.user))();
       expect(stored).toMatchObject({ name: 'Ada' });
     });
-    it('renews the session token after the name changes', async () => {
+    it('sends a valid username update and renews the session token', async () => {
       mocks.update.mockResolvedValue(undefined);
+      session.setUser({ ...ada, usernameModifiedBySystem: true });
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      expect(
+        screen.getByText(
+          'Your username was automatically adjusted to meet our new rules. Please choose a new one below.'
+        )
+      ).toBeInTheDocument();
+      await user.clear(screen.getByPlaceholderText('Username'));
+      await user.type(screen.getByPlaceholderText('Username'), 'new-name');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
+      expect(mocks.update).toHaveBeenCalledWith('1', { username: 'new-name' });
       expect(await screen.findByText('Account updated.')).toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Your username was automatically adjusted to meet our new rules. Please choose a new one below.'
+        )
+      ).not.toBeInTheDocument();
       await waitFor(() => expect(mocks.renew).toHaveBeenCalledTimes(1));
     });
 
@@ -260,7 +322,7 @@ describe('Profile page', () => {
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.type(screen.getByPlaceholderText('Username'), '-x');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
       expect(
@@ -275,7 +337,7 @@ describe('Profile page', () => {
       const user = userEvent.setup();
       render(ProfilePage);
 
-      await user.type(screen.getByPlaceholderText('Name'), 'x');
+      await user.type(screen.getByPlaceholderText('Username'), '-x');
       await user.click(screen.getByRole('button', { name: 'Update account' }));
 
       expect(await screen.findByText('Account updated.')).toBeInTheDocument();
