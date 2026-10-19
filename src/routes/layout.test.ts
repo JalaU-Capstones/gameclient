@@ -480,6 +480,8 @@ describe('layout auth guard', () => {
     const user = {
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     };
@@ -524,6 +526,8 @@ describe('layout auth guard', () => {
       session.setUser({
         id: '1',
         name: 'Ada',
+        username: 'ada-lovelace',
+        usernameModifiedBySystem: false,
         email: 'ada@example.com',
         registerDate: '2026-01-01T00:00:00Z'
       });
@@ -550,6 +554,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -577,6 +583,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -596,6 +604,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -631,6 +641,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -654,6 +666,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -699,6 +713,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -767,6 +783,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -786,6 +804,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -825,6 +845,8 @@ describe('layout auth guard', () => {
     const hostUser = {
       id: hostId,
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     };
@@ -867,6 +889,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -897,6 +921,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -923,6 +949,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -960,6 +988,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1007,6 +1037,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1023,6 +1055,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1078,6 +1112,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1102,6 +1138,8 @@ describe('layout auth guard', () => {
       const user = {
         id: '1',
         name: 'Ada',
+        username: 'ada-lovelace',
+        usernameModifiedBySystem: false,
         email: 'ada@example.com',
         registerDate: '2026-01-01T00:00:00Z'
       };
@@ -1128,6 +1166,8 @@ describe('layout auth guard', () => {
     mocks.get.mockResolvedValue({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1142,6 +1182,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1164,6 +1206,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1178,6 +1222,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1192,6 +1238,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1216,6 +1264,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1239,6 +1289,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1256,6 +1308,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1280,6 +1334,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1306,6 +1362,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1330,6 +1388,8 @@ describe('layout auth guard', () => {
       user: {
         id: '1',
         name: 'Ada',
+        username: 'ada-lovelace',
+        usernameModifiedBySystem: false,
         email: 'ada@example.com',
         registerDate: '2026-01-01T00:00:00Z'
       }
@@ -1372,6 +1432,8 @@ describe('Header layout', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1385,6 +1447,8 @@ describe('Header layout', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
