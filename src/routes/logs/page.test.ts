@@ -70,6 +70,8 @@ describe('Logs page', () => {
     session.setUser({
       id: 'admin-user',
       name: 'Admin User',
+      username: 'ada-lovelace',
+      usernameModifiedBySystem: false,
       email: 'admin@example.test',
       registerDate: '2026-10-16T00:00:00Z'
     });
