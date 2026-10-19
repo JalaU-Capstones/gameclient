@@ -61,7 +61,7 @@
   import { chatStore } from '$lib/stores/chat.svelte';
   import { isAuthenticated, isHydrated, session, currentUser } from '$lib/stores/session';
   import { isUuid } from '$lib/utils/uuid';
-  import { sanitizeDisplayName } from '$lib/utils/text';
+  import { formatUsername, sanitizeDisplayName } from '$lib/utils/text';
   import '../app.css';
 
   const PUBLIC_ROUTES = ['/login', '/register'];
@@ -1052,7 +1052,7 @@
         <span
           class="mt-1 hidden text-xs uppercase tracking-widest text-neon-cyan opacity-80 sm:inline"
         >
-          Welcome, {sanitizeDisplayName($currentUser.name)}
+          Welcome, {formatUsername(sanitizeDisplayName($currentUser?.username))}
         </span>
       {/if}
     </div>

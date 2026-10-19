@@ -499,6 +499,8 @@ describe('layout auth guard', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
@@ -1413,13 +1415,15 @@ describe('Header layout', () => {
     session.setUser({
       id: '1',
       name: 'Ada',
+      username: 'ada',
+      usernameModifiedBySystem: false,
       email: 'ada@example.com',
       registerDate: '2026-01-01T00:00:00Z'
     });
 
     render(Layout, { props: { children: stubChild } });
 
-    const welcome = screen.getByText(/Welcome, Ada/i);
+    const welcome = screen.getByText(/Welcome, @ada/i);
     expect(welcome).toHaveClass('hidden');
     expect(welcome).toHaveClass('sm:inline');
   });
