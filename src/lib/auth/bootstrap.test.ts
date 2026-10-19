@@ -41,6 +41,8 @@ import { ApiError, NetworkError } from '$lib/api/errors';
 const user = {
   id: 'u1',
   name: 'Ada',
+  username: 'ada-lovelace',
+  usernameModifiedBySystem: false,
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
