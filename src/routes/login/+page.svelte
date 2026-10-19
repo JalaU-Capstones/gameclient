@@ -30,6 +30,8 @@
     user: {
       id: string;
       name: string;
+      username: string;
+      usernameModifiedBySystem: boolean;
       email: string;
       registerDate: string;
     };
@@ -51,6 +53,13 @@
         email: inputEmail,
         password: inputPassword
       });
+
+      if (response.username_was_auto_generated) {
+        pushToast(
+          'warning',
+          'Your username was adjusted by the system. Please update it in your profile.'
+        );
+      }
 
       if (response.other_active_sessions > 0) {
         const redirectParam = $page.url.searchParams.get('redirect');
@@ -168,7 +177,7 @@
           bind:value={inputEmail}
           type="email"
           placeholder="Email"
-          class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-lg transition sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
+          class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-4 text-lg transition sm:py-5 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
         />
       </div>
 
@@ -181,7 +190,7 @@
             bind:value={inputPassword}
             type={visible ? 'text' : 'password'}
             placeholder="Password"
-            class="w-full rounded-xl border border-neon-cyan bg-cell pl-4 pr-20 py-5 text-lg transition sm:pr-24 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
+            class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-4 pr-20 text-lg transition sm:py-5 sm:pr-24 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
           />
           <button
             type="button"
@@ -198,14 +207,14 @@
       <button
         type="submit"
         disabled={submitting}
-        class="flex w-full items-center justify-center rounded-full border border-neon-magenta px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-magenta transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        class="w-full rounded-full border border-neon-magenta px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-magenta transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
       <a
         href={resolve(registerHref)}
         onclick={handleRegisterClick}
-        class="flex w-full items-center justify-center rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-cyan transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+        class="w-full rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-cyan transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Register
       </a>
