@@ -6,6 +6,7 @@
   import { userFacingMessage } from '$lib/errors/messages';
   import { globalGameplaysClient, standbyMode } from '$lib/stores/ws';
   import type { WebSocketClient } from '$lib/api/ws';
+  import type { PublicUser } from '$lib/types/api';
   import { isUuid, safeRandomUuid } from '$lib/utils/uuid';
 
   let gameplaysClient: WebSocketClient | undefined;
@@ -14,8 +15,8 @@
   let mounted = false;
   let lastInviteSentAt = 0;
 
-  function handleInvite(userId: string) {
-    if ($standbyMode || waitingForAccept || !isUuid(userId)) return;
+  function handleInvite(user: PublicUser) {
+    if ($standbyMode || waitingForAccept || !isUuid(user.id)) return;
 
     const now = Date.now();
     if (now - lastInviteSentAt < 500) return;
@@ -24,7 +25,8 @@
     sounds.play('click');
     waitingForAccept = true;
     gameplaysClient?.send('create_game', {
-      guest_id: userId,
+      guest_id: user.id,
+      guest_username: user.name,
       client_request_id: safeRandomUuid()
     });
   }
@@ -90,7 +92,7 @@
       title="Online Players"
       disabled={$standbyMode || waitingForAccept}
       emptyMessage="Waiting for challengers..."
-      onInvite={(user) => handleInvite(user.id)}
+      onInvite={(user) => handleInvite(user)}
     />
   </div>
 </section>
