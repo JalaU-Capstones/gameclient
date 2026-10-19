@@ -5,6 +5,8 @@ import { currentUser, isAuthenticated, isHydrated, session } from './session';
 const user = {
   id: '1',
   name: 'Ada Lovelace',
+  username: 'ada-lovelace',
+  usernameModifiedBySystem: false,
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
