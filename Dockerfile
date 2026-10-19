@@ -5,9 +5,13 @@
 # -----------------------------------------------------------------------------
 FROM node:22.23-alpine AS base
 
-RUN corepack enable \
- && corepack prepare pnpm@9.15.0 --activate \
- && apk add --no-cache tini
+# Disable the interactive download prompt for corepack (required for non-TTY
+# environments like `docker build` in CI).
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+RUN corepack enable && \
+    corepack prepare pnpm@9.15.0 --activate && \
+    apk add --no-cache tini
 
 WORKDIR /app
 
