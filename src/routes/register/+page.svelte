@@ -8,9 +8,12 @@
   import { userFacingMessage } from '$lib/errors/messages';
   import { sounds } from '$lib/audio/sounds';
   import { session } from '$lib/stores/session';
+  import { pushToast } from '$lib/stores/toasts';
 
   let visible = $state(false);
-  let inputName = $state('');
+  let inputUsername = $state('');
+  let usernameError = $state('');
+  let usernameTouched = $state(false);
   let inputEmail = $state('');
   let inputPassword = $state('');
   let error = $state('');
@@ -20,18 +23,40 @@
     return redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login';
   });
 
+  function validateUsername(username: string): string {
+    if (!username || username.length < 3) return 'Username must be at least 3 characters.';
+    if (username.length > 30) return 'Username must be at most 30 characters.';
+    const regex = /^[a-zA-Z0-9](?:[a-zA-Z0-9_-]{1,28}[a-zA-Z0-9])?$/;
+    if (!regex.test(username)) {
+      return 'Use only letters, numbers, hyphens, and underscores. Must start and end with a letter or number.';
+    }
+    return '';
+  }
+
+  function handleUsernameInput(event: Event) {
+    inputUsername = (event.currentTarget as HTMLInputElement).value;
+    usernameTouched = true;
+    usernameError = validateUsername(inputUsername);
+  }
+
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
     sounds.play('click');
     error = '';
+    usernameTouched = true;
+    usernameError = validateUsername(inputUsername);
+    if (usernameError) return;
     submitting = true;
 
     try {
       const response = await authApi.register({
-        name: inputName,
+        username: inputUsername,
         email: inputEmail,
         password: inputPassword
       });
+      if (response.username_was_auto_generated) {
+        pushToast('info', 'Your username was auto-generated. Please update it in your profile.');
+      }
       session.setUser(response.user);
       const redirectParam = $page.url.searchParams.get('redirect');
       const destination = resolveRedirect(redirectParam);
@@ -69,43 +94,71 @@
   </h2>
   <form onsubmit={handleSubmit} class="space-y-10">
     <div class="space-y-4">
-      <p class="text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl">Insert your name</p>
+      <label
+        for="register-username"
+        class="block text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl"
+      >
+        Choose a username
+      </label>
       <input
-        bind:value={inputName}
+        id="register-username"
+        value={inputUsername}
+        oninput={handleUsernameInput}
+        onblur={() => {
+          if (inputUsername) {
+            usernameTouched = true;
+            usernameError = validateUsername(inputUsername);
+          }
+        }}
         type="text"
-        placeholder="Name"
-        autocomplete="name"
+        placeholder="e.g., john-doe-99"
+        autocomplete="username"
         required
-        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-lg transition sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
+        aria-invalid={usernameTouched && usernameError !== ''}
+        aria-describedby={usernameTouched && usernameError ? 'register-username-error' : undefined}
+        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-4 text-lg transition sm:py-5 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
       />
+      {#if usernameTouched && usernameError}
+        <p id="register-username-error" class="text-left text-red-500">{usernameError}</p>
+      {/if}
     </div>
 
     <div class="space-y-4">
-      <p class="text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl">Insert your email</p>
+      <label
+        for="register-email"
+        class="block text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl"
+      >
+        Insert your email
+      </label>
       <input
         bind:value={inputEmail}
+        id="register-email"
         type="email"
         placeholder="Email"
         autocomplete="email"
         required
-        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-5 text-lg transition sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
+        class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-4 text-lg transition sm:py-5 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
       />
     </div>
 
     <div class="space-y-4">
-      <p class="text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl">
+      <label
+        for="register-password"
+        class="block text-left font-bold text-fg text-lg sm:text-2xl md:text-3xl"
+      >
         Insert your password
-      </p>
+      </label>
       <div class="relative">
         <input
           bind:value={inputPassword}
+          id="register-password"
           type={visible ? 'text' : 'password'}
           placeholder="Password"
           autocomplete="new-password"
           minlength="8"
           maxlength="128"
           required
-          class="w-full rounded-xl border border-neon-cyan bg-cell pl-4 pr-20 py-5 text-lg transition sm:pr-24 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
+          class="w-full rounded-xl border border-neon-cyan bg-cell px-4 py-4 pr-20 text-lg transition sm:py-5 sm:pr-24 sm:text-2xl focus:outline-none focus:shadow-glow-cyan"
         />
         <button
           type="button"
@@ -121,15 +174,15 @@
     {/if}
     <button
       type="submit"
-      disabled={submitting}
-      class="flex w-full items-center justify-center rounded-full border border-neon-magenta px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-magenta transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={submitting || validateUsername(inputUsername) !== ''}
+      class="w-full rounded-full border border-neon-magenta px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-magenta transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {submitting ? 'Creating account…' : 'Create account'}
     </button>
     <a
       href={resolve(loginHref)}
       onclick={handleBackToLoginClick}
-      class="flex w-full items-center justify-center rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-cyan transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+      class="w-full rounded-full border border-neon-cyan px-4 py-4 md:py-5 text-xl sm:text-2xl md:text-3xl uppercase tracking-widest text-center text-neon-cyan transition hover:bg-opacity-10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
       Back to login
     </a>
