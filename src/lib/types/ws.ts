@@ -47,3 +47,10 @@ export interface UserStatusPayload {
   user_id: string;
   status: 'playing' | 'available';
 }
+
+export interface CreateGamePayload {
+  guest_id: string;
+  guest_username?: string;
+  client_request_id?: string;
+  request_id?: string;
+}

@@ -4,6 +4,8 @@ export interface PublicUser {
 }
 
 export interface User extends PublicUser {
+  username: string;
+  usernameModifiedBySystem: boolean;
   email: string;
   registerDate: string;
 }
@@ -70,13 +72,13 @@ export interface HealthResponse {
 }
 
 export interface CreateUserPayload {
-  name: string;
+  username: string;
   email: string;
   password: string;
 }
 
 export interface UpdateUserPayload {
-  name?: string;
+  username?: string;
   email?: string;
   password?: string;
 }
@@ -91,10 +93,11 @@ export interface LoginResponse {
   token_type: string;
   user: User;
   other_active_sessions: number;
+  username_was_auto_generated: boolean;
 }
 
 export interface AuthResponse {
   accessToken: string;
   tokenType: string;
-  user: UserResponse;
+  user: User;
 }
