@@ -17,7 +17,7 @@
   import OnlinePlayersMenu from '$lib/components/OnlinePlayersMenu.svelte';
   import CountdownButton from '$lib/components/CountdownButton.svelte';
   import { isUuid, safeRandomUuid } from '$lib/utils/uuid';
-  import { sanitizeDisplayName } from '$lib/utils/text';
+  import { formatUsername, sanitizeDisplayName } from '$lib/utils/text';
 
   let gameplaysClient: WebSocketClient;
   let unsubscribers: (() => void)[] = [];
@@ -611,7 +611,7 @@
           class:text-neon-magenta={hostUser?.id === turn}
           class:text-glow-magenta={hostUser?.id === turn}
         >
-          {hostUser ? sanitizeDisplayName(hostUser.name) || 'Unknown' : 'Unknown'}
+          {hostUser ? formatUsername(sanitizeDisplayName(hostUser.name)) || 'Unknown' : 'Unknown'}
         </div>
       </div>
 
@@ -624,7 +624,7 @@
           class:text-neon-cyan={guestUser?.id === turn}
           class:text-glow-cyan={guestUser?.id === turn}
         >
-          {guestUser ? sanitizeDisplayName(guestUser.name) || 'Unknown' : 'Unknown'}
+          {guestUser ? formatUsername(sanitizeDisplayName(guestUser.name)) || 'Unknown' : 'Unknown'}
         </div>
       </div>
     </div>

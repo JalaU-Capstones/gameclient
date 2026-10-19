@@ -117,6 +117,8 @@ vi.mock('$lib/stores/ws', () => ({
 const currentUser: User = {
   id: 'host',
   name: 'Ada',
+  username: 'ada',
+  usernameModifiedBySystem: false,
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
@@ -186,14 +188,14 @@ describe('Game page', () => {
   it('displays the host and guest names after loading', async () => {
     render(GamePage);
 
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(await screen.findByText('@Ada')).toBeInTheDocument();
+    expect(screen.getByText('@Bob')).toBeInTheDocument();
   });
 
   it('sends leave_game when the game page unmounts', async () => {
     const { unmount } = render(GamePage);
 
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
     unmount();
 
     expect(mocks.client.send).toHaveBeenCalledWith('leave_game', { game_id: 'game-123' });
@@ -202,15 +204,15 @@ describe('Game page', () => {
   it('loads host and guest from minimal public user endpoint responses', async () => {
     render(GamePage);
 
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(await screen.findByText('@Ada')).toBeInTheDocument();
+    expect(screen.getByText('@Bob')).toBeInTheDocument();
     expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/host');
     expect(mocks.get).toHaveBeenCalledWith('/api/v2/users/guest');
   });
 
   it('sanitizes gameplay error messages before rendering them', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
     const rawMessage = 'Opponent b2f40334-48ad-4e82-b2f4-03f2d1c1f111 is offline';
     emit('error', { code: 'OPPONENT_OFFLINE', message: rawMessage });
 
@@ -222,7 +224,7 @@ describe('Game page', () => {
     vi.useFakeTimers();
     try {
       render(GamePage);
-      await screen.findByText('Ada');
+      await screen.findByText('@Ada');
 
       emit('invitation_replaced', { game_id: 'game-123', reason: 'target_busy' });
 
@@ -244,7 +246,7 @@ describe('Game page', () => {
 
   it('ignores invitation_replaced events for a different game', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_replaced', { game_id: 'other-game', reason: 'target_busy' });
 
@@ -255,7 +257,7 @@ describe('Game page', () => {
   it('marks the invitation as pending again after a retry is accepted', async () => {
     mocks.invitationState = 'rejected';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_retry_accepted', {
       game_id: 'game-123',
@@ -276,7 +278,7 @@ describe('Game page', () => {
   it('ignores an expiration event older than an acknowledged retry', async () => {
     mocks.invitationState = 'expired';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_retry_accepted', {
       game_id: 'game-123',
@@ -306,7 +308,7 @@ describe('Game page', () => {
   it('ignores a stale invitation_expired that arrives after invitation_retry_accepted', async () => {
     mocks.invitationState = 'pending';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_retry_accepted', {
       game_id: 'game-123',
@@ -331,7 +333,7 @@ describe('Game page', () => {
   it('processes invitation_expired when updated_at is missing from the payload', async () => {
     mocks.invitationState = 'pending';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_retry_accepted', {
       game_id: 'game-123',
@@ -351,7 +353,7 @@ describe('Game page', () => {
   it('filters an invitation_expired event with the same updated_at as the last retry', async () => {
     mocks.invitationState = 'pending';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
     const updatedAt = '2026-10-17T12:00:00.000000+00:00';
 
     emit('invitation_retry_accepted', {
@@ -376,7 +378,7 @@ describe('Game page', () => {
 
   it('shows the idempotent retry toast when the invitation was already pending', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('invitation_retry_accepted', {
       game_id: 'game-123',
@@ -395,7 +397,7 @@ describe('Game page', () => {
   it('shows a countdown button after RETRY_LIMIT_EXCEEDED', async () => {
     mocks.invitationState = 'rejected';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('error', {
       code: 'RETRY_LIMIT_EXCEEDED',
@@ -410,7 +412,7 @@ describe('Game page', () => {
   it('sends retry_invitation when the host clicks the retry button', async () => {
     mocks.invitationState = 'rejected';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
@@ -421,7 +423,7 @@ describe('Game page', () => {
     session.setUser({ ...currentUser, id: 'guest', name: 'Bob' });
     mocks.invitationState = 'rejected';
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
@@ -430,14 +432,14 @@ describe('Game page', () => {
     mocks.invitationState = 'rejected';
     mocks.setStandbyMode(true);
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled();
   });
 
   it('subscribes once when the gameplay socket is already connected', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     expect(mocks.client.connect).not.toHaveBeenCalled();
     expect(mocks.client.send).toHaveBeenCalledTimes(1);
@@ -447,7 +449,7 @@ describe('Game page', () => {
   it('subscribes again after gameplay socket authentication on reconnect', async () => {
     mocks.gameplayAlive = false;
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     expect(mocks.client.connect).toHaveBeenCalledWith('token');
     emit('auth_ok');
@@ -457,7 +459,7 @@ describe('Game page', () => {
 
   it('rebinds to the new gameplay client after a session takeover', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     const takeoverClient = {
       ...mocks.client,
@@ -478,7 +480,7 @@ describe('Game page', () => {
     session.setUser({ ...currentUser, id: guest.id, name: guest.name });
     render(GamePage);
 
-    await screen.findByText('Bob');
+    await screen.findByText('@Bob');
 
     expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled();
   });
@@ -609,7 +611,7 @@ describe('Game page', () => {
 
   it('disables game actions in standby mode', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
     mocks.setStandbyMode(true);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cell 0 0' })).toBeDisabled());
@@ -646,7 +648,7 @@ describe('Game page', () => {
 
   it('applies the board, winner, and reason received with game_ended', async () => {
     render(GamePage);
-    await screen.findByText('Ada');
+    await screen.findByText('@Ada');
 
     emit('game_ended', {
       winner: 'guest',
