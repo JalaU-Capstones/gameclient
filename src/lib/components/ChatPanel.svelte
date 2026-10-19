@@ -3,6 +3,7 @@
   import { sounds } from '$lib/audio/sounds';
   import { chatStore } from '$lib/stores/chat.svelte';
   import type { ChatMessage } from '$lib/types/chat';
+  import { formatUsername } from '$lib/utils/text';
 
   interface Props {
     onClose: () => void;
@@ -215,7 +216,7 @@
           <div
             class="text-[10px] font-semibold uppercase tracking-[0.24em] text-neon-cyan opacity-80"
           >
-            {group.userName} · {formatRelative(group.messages[0].timestamp)}
+            {formatUsername(group.userName)} · {formatRelative(group.messages[0].timestamp)}
           </div>
 
           {#each group.messages as message (message.id)}

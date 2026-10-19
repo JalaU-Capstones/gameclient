@@ -123,7 +123,7 @@ describe('ChatPanel', () => {
 
     render(ChatPanel, { onClose: vi.fn() });
 
-    expect(screen.getByText('Ada · 1m')).toBeInTheDocument();
+    expect(screen.getByText('@Ada · 1m')).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
@@ -148,7 +148,7 @@ describe('ChatPanel', () => {
 
     render(ChatPanel, { onClose: vi.fn() });
 
-    expect(screen.getAllByText(/Ada ·/)).toHaveLength(1);
+    expect(screen.getAllByText(/@Ada ·/)).toHaveLength(1);
     expect(screen.getByText('first')).toBeInTheDocument();
     expect(screen.getByText('second')).toBeInTheDocument();
   });
@@ -174,7 +174,7 @@ describe('ChatPanel', () => {
 
     render(ChatPanel, { onClose: vi.fn() });
 
-    expect(screen.getAllByText(/Ada ·|Bob ·/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/@Ada ·|@Bob ·/).length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows an absolute time in the title on older messages', () => {
@@ -191,7 +191,7 @@ describe('ChatPanel', () => {
 
     render(ChatPanel, { onClose: vi.fn() });
 
-    expect(screen.getByText('Ada · ' + new Date(exactIso).toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText('@Ada · ' + new Date(exactIso).toLocaleString())).toBeInTheDocument();
   });
 
   it('renders chatStore.error inline', () => {
