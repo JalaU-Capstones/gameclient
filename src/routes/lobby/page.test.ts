@@ -129,6 +129,8 @@ const bobId = '123e4567-e89b-42d3-a456-426614174001';
 const ada: User = {
   id: adaId,
   name: 'Ada',
+  username: 'ada',
+  usernameModifiedBySystem: false,
   email: 'ada@example.com',
   registerDate: '2026-01-01T00:00:00Z'
 };
@@ -275,6 +277,7 @@ describe('Lobby page', () => {
       'create_game',
       expect.objectContaining({
         guest_id: bobId,
+        guest_username: 'Bob',
         client_request_id: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         )
@@ -312,7 +315,7 @@ describe('Lobby page', () => {
       'create_game',
       expect.objectContaining({ guest_id: bobId })
     );
-    expect(screen.getAllByText('Bob')).not.toHaveLength(0);
+    expect(screen.getAllByText('@Bob')).not.toHaveLength(0);
   });
 
   it('accepts an invitation and navigates to the accepted game', async () => {
