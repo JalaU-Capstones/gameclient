@@ -108,7 +108,7 @@ Estos valores se definen en `render.yaml` como `envVars` y se inyectan al bundle
 | `PUBLIC_REQUEST_TIMEOUT_MS` | `60000`                             | Timeout global del cliente HTTP                       |
 | `PUBLIC_LOG_ADMIN_EMAILS`   | `sync: false`                       | Se deja definido por el entorno, no por `render.yaml` |
 
-Default is 60000ms (60s). This is intentionally high to accommodate the Render free-tier cold start (which can take 50+ seconds). Do not lower this value below 60,000 in production, or the frontend will time out before the backend wakes up.
+**Cold start resilience:** The default is `60000` (60 seconds). Render's free tier spins down after 15 minutes of inactivity, and the first request after a cold start can take 50+ seconds. Do **not** lower this value in production, or the frontend will throw a `TimeoutError` before the backend wakes up.
 
 La seguridad del CDN también se define allí con los mismos cuatro headers:
 
