@@ -16,7 +16,6 @@ services:
   - type: web
     name: gameclient
     runtime: static
-    plan: free
     buildCommand: pnpm install --frozen-lockfile && pnpm build:static
     staticPublishPath: ./build
     routes:
