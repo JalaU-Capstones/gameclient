@@ -30,7 +30,7 @@ function parseEmailList(raw: string): string[] {
 export const config: AppConfig = {
   apiBaseUrl: readEnv('PUBLIC_API_BASE', ''),
   wsBaseUrl: readEnv('PUBLIC_WS_BASE', ''),
-  requestTimeoutMs: Number(readEnv('PUBLIC_REQUEST_TIMEOUT_MS', '15000')),
+  requestTimeoutMs: Number(readEnv('PUBLIC_REQUEST_TIMEOUT_MS', '60000')),
   logAdminEmails: parseEmailList(readEnv('PUBLIC_LOG_ADMIN_EMAILS', ''))
 };
 

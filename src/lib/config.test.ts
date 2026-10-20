@@ -21,7 +21,7 @@ describe('application configuration', () => {
     expect(config).toEqual({
       apiBaseUrl: '',
       wsBaseUrl: '',
-      requestTimeoutMs: 15000,
+      requestTimeoutMs: 60000,
       logAdminEmails: []
     });
   });

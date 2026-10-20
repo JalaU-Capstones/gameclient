@@ -41,6 +41,6 @@ services:
       - key: PUBLIC_WS_BASE
         value: https://gameapi-9vos.onrender.com
       - key: PUBLIC_REQUEST_TIMEOUT_MS
-        value: '15000'
+        value: '60000'
       - key: PUBLIC_LOG_ADMIN_EMAILS
         sync: false
