@@ -166,11 +166,13 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="fixed bottom-24 right-4 z-50 max-h-[70vh] w-90 max-w-[calc(100vw-2rem)] rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan sm:bottom-6 sm:right-6"
+  class="fixed bottom-24 right-4 z-50 flex max-h-[70vh] w-90 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan sm:bottom-6 sm:right-6"
   role="region"
   aria-label="Chat"
 >
-  <header class="flex items-center justify-between gap-3 border-b border-neon-cyan/50 px-4 py-3">
+  <header
+    class="flex shrink-0 items-center justify-between gap-3 border-b border-neon-cyan/50 px-4 py-3"
+  >
     <div class="flex items-center gap-2">
       <span class="text-xs font-semibold uppercase tracking-[0.28em] text-neon-cyan">
         Chat · {chatStore.usersCount}
@@ -203,13 +205,13 @@
     </div>
   </header>
 
-  <div class="relative h-125">
+  <div class="relative flex-1 min-h-0 overflow-hidden">
     <div
       bind:this={listEl}
       onscroll={handleScroll}
       role="log"
       aria-live="polite"
-      class="flex h-full max-h-125 flex-col gap-3 overflow-y-auto px-3 py-3"
+      class="flex h-full flex-col gap-3 overflow-y-auto px-3 py-3"
     >
       {#each groupedMessages() as group (group.userId + ':' + group.messages[0].id)}
         <div class="flex flex-col gap-2">
@@ -269,7 +271,7 @@
     </div>
   {/if}
 
-  <form class="border-t border-neon-cyan/40 p-3" onsubmit={handleSubmit}>
+  <form class="shrink-0 border-t border-neon-cyan/40 p-3" onsubmit={handleSubmit}>
     <div class="flex items-center gap-2">
       <input
         type="text"
