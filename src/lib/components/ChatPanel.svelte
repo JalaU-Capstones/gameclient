@@ -160,13 +160,14 @@
 
   onMount(() => {
     inputEl?.focus();
+    void tick().then(() => scrollToBottom());
   });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="fixed bottom-24 right-4 z-50 flex max-h-[70vh] w-90 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan sm:bottom-6 sm:right-6"
+  class="fixed bottom-24 right-4 z-50 flex h-125 max-h-[70vh] w-90 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neon-cyan bg-bg shadow-glow-cyan sm:bottom-6 sm:right-6"
   role="region"
   aria-label="Chat"
 >
@@ -211,7 +212,7 @@
       onscroll={handleScroll}
       role="log"
       aria-live="polite"
-      class="flex h-full flex-col gap-3 overflow-y-auto px-3 py-3"
+      class="absolute inset-0 overflow-y-auto px-3 py-3 space-y-3"
     >
       {#each groupedMessages() as group (group.userId + ':' + group.messages[0].id)}
         <div class="flex flex-col gap-2">
