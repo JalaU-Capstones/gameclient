@@ -1063,8 +1063,8 @@
     content="Play Tic Tac Toe online with friends. Real-time multiplayer, live chat, and leaderboards."
   />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://gameclient-2msz.onrender.com" />
-  <meta property="og:image" content="https://gameclient-2msz.onrender.com/icon-512.png" />
+  <meta property="og:url" content="https://gameclient-u3y3.onrender.com" />
+  <meta property="og:image" content="https://gameclient-u3y3.onrender.com/icon-512.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="robots" content="index, follow" />
 </svelte:head>

@@ -8,7 +8,7 @@ La referencia operativa del equipo queda en la siguiente configuración:
 
 | Recurso                       | URL                                                   |
 | ----------------------------- | ----------------------------------------------------- |
-| Frontend (Render Static Site) | `<la URL real del frontend en Render>`                |
+| Frontend (Render Static Site) | <https://gameclient-u3y3.onrender.com>                |
 | Backend                       | <https://gameapi-9vos.onrender.com>                   |
 | WebSocket gameplays           | `wss://gameapi-9vos.onrender.com/api/v2/ws/gameplays` |
 | WebSocket presence            | `wss://gameapi-9vos.onrender.com/api/v2/ws/presence`  |

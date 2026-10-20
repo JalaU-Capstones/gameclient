@@ -622,7 +622,8 @@ Optional environment variables:
 - `PRODUCTION_URL` — URL used by the production health check. Set it as a
   **repository variable** (GitHub: Settings → Secrets and variables → Actions
   → Variables) and a **CI/CD variable** (GitLab: Settings → CI/CD → Variables).
-  Defaults to `https://gameclient-2msz.onrender.com` when unset.
+  Set it to `https://gameclient-u3y3.onrender.com` to enable verification;
+  verification is skipped when the variable is unset.
 
 ## Visual design
 
