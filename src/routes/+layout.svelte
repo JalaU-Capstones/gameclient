@@ -1027,12 +1027,21 @@
     const usePageUrl =
       window.location.pathname === '/' && PUBLIC_ROUTES.includes($page.url.pathname);
     const currentPath = usePageUrl ? $page.url.pathname : window.location.pathname;
-    if (!PUBLIC_ROUTES.includes(currentPath)) return;
+    if (currentPath !== '/login' && currentPath !== '/register') return;
 
-    const currentSearch = usePageUrl ? $page.url.search : window.location.search;
-    const redirectParam = new URLSearchParams(currentSearch).get('redirect');
-    const destination = resolveRedirect(redirectParam);
-    goto(resolve(destination));
+    const timer = setTimeout(() => {
+      const useSettledPageUrl =
+        window.location.pathname === '/' && PUBLIC_ROUTES.includes($page.url.pathname);
+      const settledPath = useSettledPageUrl ? $page.url.pathname : window.location.pathname;
+      if (settledPath !== '/login' && settledPath !== '/register') return;
+
+      const settledSearch = useSettledPageUrl ? $page.url.search : window.location.search;
+      const redirectParam = new URLSearchParams(settledSearch).get('redirect');
+      const destination = resolveRedirect(redirectParam);
+      goto(resolve(destination));
+    }, 200);
+
+    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -1046,15 +1055,16 @@
   <title>GameClient | Tic Tac Toe</title>
   <meta
     name="description"
-    content="Play Tic Tac Toe online with friends. Real-time multiplayer, chat, and leaderboards."
+    content="Play Tic Tac Toe online with friends. Real-time multiplayer, live chat, and leaderboards."
   />
   <meta property="og:title" content="GameClient | Tic Tac Toe" />
   <meta
     property="og:description"
-    content="Play Tic Tac Toe online with friends. Real-time multiplayer, chat, and leaderboards."
+    content="Play Tic Tac Toe online with friends. Real-time multiplayer, live chat, and leaderboards."
   />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://gameclient-2msz.onrender.com" />
+  <meta property="og:image" content="https://gameclient-2msz.onrender.com/icon-512.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="robots" content="index, follow" />
 </svelte:head>
