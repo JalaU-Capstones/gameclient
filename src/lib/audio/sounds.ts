@@ -25,22 +25,21 @@ export class AudioService {
     if (!browser || this.unlocked) return;
     if (this.unlocking) return this.unlocking;
 
-    this.unlocking = (async () => {
-      try {
-        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
-        const Context = window.AudioContext ?? (window as ExtendedWindow).webkitAudioContext;
-        if (!Context) return;
+    if (!this.context) {
+      const Context = window.AudioContext ?? (window as ExtendedWindow).webkitAudioContext;
+      if (!Context) return;
+      this.context = new Context();
+    }
 
-        this.context ??= new Context();
-        if (this.context.state !== 'running') {
-          await this.context.resume();
-        }
-        if (this.context.state !== 'running') return;
-
+    const resume = this.context.state === 'suspended' ? this.context.resume() : Promise.resolve();
+    this.unlocking = resume
+      .then(async () => {
+        if (this.context?.state !== 'running') return;
         this.unlocked = true;
         await this.preload();
         this.flushPendingSounds();
-      } catch (error) {
+      })
+      .catch((error: unknown) => {
         this.unlocked = false;
         if (
           (error instanceof DOMException || error instanceof Error) &&
@@ -48,11 +47,10 @@ export class AudioService {
         )
           return;
         throw error;
-      }
-    })().finally(() => {
-      this.unlocking = null;
-    });
-
+      })
+      .finally(() => {
+        this.unlocking = null;
+      });
     return this.unlocking;
   }
 

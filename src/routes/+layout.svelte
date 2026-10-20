@@ -707,15 +707,20 @@
   onMount(() => {
     layoutMounted = true;
     if (import.meta.env.DEV) console.debug('[layout] mount');
+    let unlockInFlight: Promise<void> | null = null;
     const unlock = () => {
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-      void Promise.resolve(sounds.unlock()).catch((err: unknown) => {
-        console.warn('[audio] failed to unlock audio', err);
-      });
+      if (unlockInFlight) return;
+      unlockInFlight = Promise.resolve(sounds.unlock());
+      void unlockInFlight
+        .catch((err: unknown) => {
+          console.warn('[audio] failed to unlock audio', err);
+        })
+        .finally(() => {
+          unlockInFlight = null;
+        });
     };
-    window.addEventListener('pointerdown', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     const onPageHide = () => {
       if (import.meta.env.DEV) console.debug('[layout] pagehide');
       releaseAllPresenceAndGameplay();
@@ -1019,9 +1024,13 @@
   $effect(() => {
     if (!$isHydrated) return;
     if (!$isAuthenticated) return;
-    if (!isPublicRoute) return;
+    const usePageUrl =
+      window.location.pathname === '/' && PUBLIC_ROUTES.includes($page.url.pathname);
+    const currentPath = usePageUrl ? $page.url.pathname : window.location.pathname;
+    if (!PUBLIC_ROUTES.includes(currentPath)) return;
 
-    const redirectParam = $page.url.searchParams.get('redirect');
+    const currentSearch = usePageUrl ? $page.url.search : window.location.search;
+    const redirectParam = new URLSearchParams(currentSearch).get('redirect');
     const destination = resolveRedirect(redirectParam);
     goto(resolve(destination));
   });
@@ -1034,7 +1043,20 @@
 </script>
 
 <svelte:head>
-  <title>GameClient</title>
+  <title>GameClient | Tic Tac Toe</title>
+  <meta
+    name="description"
+    content="Play Tic Tac Toe online with friends. Real-time multiplayer, chat, and leaderboards."
+  />
+  <meta property="og:title" content="GameClient | Tic Tac Toe" />
+  <meta
+    property="og:description"
+    content="Play Tic Tac Toe online with friends. Real-time multiplayer, chat, and leaderboards."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://gameclient-2msz.onrender.com" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="robots" content="index, follow" />
 </svelte:head>
 
 <div class="min-h-screen bg-bg text-fg transition-colors duration-200">
