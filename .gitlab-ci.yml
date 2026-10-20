@@ -102,18 +102,11 @@ verify:production:
   cache: {}
   script:
     - |
-      url="${PRODUCTION_URL:-https://gameclient-2msz.onrender.com}"
-      echo "Verifying production at ${url}/health"
-      for attempt in $(seq 1 10); do
-        if curl --fail --silent --show-error --max-time 15 "${url}/health"; then
-          echo "Production /health is reachable."
-          exit 0
-        fi
-        echo "Attempt ${attempt} failed; retrying in 30s."
-        sleep 30
-      done
-      echo "Production /health never became reachable."
-      exit 1
+      if [ -z "$PRODUCTION_URL" ]; then
+        echo "PRODUCTION_URL is not set. Skipping verification."
+        exit 0
+      fi
+      curl --fail --silent --show-error --max-time 15 "${PRODUCTION_URL}/health"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 

@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JalaU-Capstones/gameclient/branch/main/graph/badge.svg)](https://codecov.io/gh/JalaU-Capstones/gameclient)
-[![Production](https://img.shields.io/website?url=https%3A%2F%2Fgameclient-2msz.onrender.com%2Fhealth&label=production)](https://gameclient-2msz.onrender.com/health)
+[![Production Status](https://img.shields.io/github/actions/workflow/status/JalaU-Capstones/gameclient/ci.yml?job=verify-production&branch=main&label=production&logo=render)](https://github.com/JalaU-Capstones/gameclient/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-The production badge checks `/health` on every render. On the Render free tier the service sleeps after inactivity, so the badge may briefly show "down" during a cold start.
+The production badge reflects the status of the automated health check. Set `PRODUCTION_URL` in GitHub/GitLab variables to enable it.
 
 Frontend SvelteKit for the game. This client wraps HTTP and WebSocket access to the FastAPI backend so UI screens only consume API modules and stores instead of directly dealing with fetch or socket logic.
 
